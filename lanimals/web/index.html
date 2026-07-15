@@ -43,22 +43,28 @@
           <p data-i18n="empty.message"></p>
         </div>
       </div>
+      <div id="messages-scrollbar" class="messages-scrollbar" aria-hidden="true" hidden>
+        <div id="messages-scrollbar-thumb" class="messages-scrollbar-thumb"></div>
+      </div>
 
       <footer id="drop-zone" class="composer">
         <form id="message-form" class="composer-bubble">
-          <div id="file-preview" class="file-preview" hidden>
-            <span class="file-preview-icon" aria-hidden="true">📎</span>
-            <span class="file-preview-copy">
-              <strong id="file-preview-name"></strong>
-              <small id="file-preview-size"></small>
-            </span>
-            <button id="remove-file" class="remove-file" type="button" data-i18n-title="composer.removeFile" data-i18n-aria-label="composer.removeFile">×</button>
-          </div>
+          <div id="file-preview" class="file-preview" hidden></div>
           <textarea id="message-input" rows="1" maxlength="4000" data-i18n-placeholder="composer.placeholder"></textarea>
+          <button id="expand-composer" class="expand-button" type="button" data-i18n-title="composer.expand" data-i18n-aria-label="composer.expand" aria-expanded="false">
+            <svg class="expand-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path class="expand-glyph" d="M13 6h5v5M11 18H6v-5" fill="none" stroke="currentColor" stroke-width="2.2"/>
+              <path class="collapse-glyph" d="M14 5v5h5M10 19v-5H5" fill="none" stroke="currentColor" stroke-width="2.2"/>
+            </svg>
+          </button>
           <div id="upload-status" class="upload-status" hidden></div>
           <div class="composer-actions">
-            <label class="add-button" for="file-input" data-i18n-title="composer.addFile" data-i18n-aria-label="composer.addFile">＋</label>
-            <input id="file-input" type="file" hidden>
+            <label class="add-button" for="file-input" data-i18n-title="composer.addFile" data-i18n-aria-label="composer.addFile">
+              <svg class="add-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+              </svg>
+            </label>
+            <input id="file-input" type="file" multiple hidden>
             <button id="send-button" class="send-button" type="submit" disabled data-i18n-title="composer.send" data-i18n-aria-label="composer.send">
               <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>

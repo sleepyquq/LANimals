@@ -22,20 +22,24 @@
   },
   "composer": {
     "placeholder": "输入消息，或将文件拖到这里…",
+    "placeholderMobile": "输入消息…",
     "addFile": "添加文件",
     "removeFile": "移除文件",
     "send": "发送",
-    "dropActive": "松手添加文件"
+    "dropActive": "松手添加文件",
+    "expand": "展开输入框",
+    "collapse": "收起输入框"
   },
   "upload": {
     "selected": "已添加 {name}",
+    "fileCount": "{count} 个附件",
     "uploading": "正在上传 {name}…",
     "progress": "正在上传 {name} · {progress}%",
     "sent": "{name} 已发送",
     "failed": "上传失败（{status}）",
     "networkError": "网络中断，文件未发送",
-    "tooLarge": "文件超过服务器允许的大小",
-    "singleFile": "当前每条消息支持一个文件"
+    "tooLarge": "附件总大小超过服务器允许的大小",
+    "tooMany": "每条消息最多发送 {count} 个附件"
   },
   "errors": {
     "requestFailed": "请求失败（{status}）",

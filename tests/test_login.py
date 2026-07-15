@@ -15,6 +15,7 @@ def test_correct_password_logs_in_and_reuses_persistent_animal_name(tmp_path):
     assert first_login.cookies.get("lan_device")
     assert first_login.cookies.get("lan_session")
     assert first_me.json()["temporary"] is False
+    assert first_login.json()["identity_id"] == first_me.json()["identity_id"]
 
     with TestClient(app) as returning_browser:
         returning_browser.cookies.set("lan_device", first_login.cookies["lan_device"])
@@ -23,6 +24,7 @@ def test_correct_password_logs_in_and_reuses_persistent_animal_name(tmp_path):
 
     assert second_login.status_code == 200
     assert second_me.json()["name"] == first_me.json()["name"]
+    assert second_me.json()["identity_id"] == first_me.json()["identity_id"]
 
 
 def test_wrong_password_does_not_create_a_session(tmp_path):

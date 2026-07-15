@@ -22,20 +22,24 @@
   },
   "composer": {
     "placeholder": "Type a message or drop a file here…",
+    "placeholderMobile": "Message…",
     "addFile": "Add file",
     "removeFile": "Remove file",
     "send": "Send",
-    "dropActive": "Drop to attach the file"
+    "dropActive": "Drop to attach the file",
+    "expand": "Expand composer",
+    "collapse": "Collapse composer"
   },
   "upload": {
     "selected": "Attached {name}",
+    "fileCount": "{count} attachments",
     "uploading": "Uploading {name}…",
     "progress": "Uploading {name} · {progress}%",
     "sent": "Sent {name}",
     "failed": "Upload failed ({status})",
     "networkError": "The connection was interrupted; the file was not sent",
-    "tooLarge": "The file exceeds the server limit",
-    "singleFile": "One file can be attached to each message for now"
+    "tooLarge": "The attachments exceed the server size limit",
+    "tooMany": "Each message can include up to {count} attachments"
   },
   "errors": {
     "requestFailed": "Request failed ({status})",

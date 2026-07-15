@@ -32,7 +32,8 @@ class DeviceRegistry:
                 CREATE TABLE IF NOT EXISTS devices (
                     token_hash TEXT PRIMARY KEY,
                     display_name TEXT NOT NULL,
-                    temporary INTEGER NOT NULL
+                    temporary INTEGER NOT NULL,
+                    public_id TEXT NOT NULL UNIQUE
                 );
                 CREATE TABLE IF NOT EXISTS sessions (
                     token_hash TEXT PRIMARY KEY,
@@ -41,6 +42,7 @@ class DeviceRegistry:
                 );
                 """
             )
+            self._ensure_public_ids(connection)
 
     def get_or_create(self, token: str, *, temporary: bool) -> str:
         token_hash = self._hash(token)
@@ -70,8 +72,9 @@ class DeviceRegistry:
                 except StopIteration as error:
                     raise RuntimeError("动物名称池已用完，请在主机上扩充名称列表") from error
             connection.execute(
-                "INSERT INTO devices (token_hash, display_name, temporary) VALUES (?, ?, ?)",
-                (token_hash, name, int(temporary)),
+                """INSERT INTO devices (token_hash, display_name, temporary, public_id)
+                   VALUES (?, ?, ?, ?)""",
+                (token_hash, name, int(temporary), secrets.token_urlsafe(18)),
             )
             return name
 
@@ -88,18 +91,35 @@ class DeviceRegistry:
         with self._connect() as connection:
             connection.execute("DELETE FROM sessions")
 
-    def session_identity(self, session_token: str) -> tuple[str, bool] | None:
+    def session_identity(self, session_token: str) -> tuple[str, bool, str] | None:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT devices.display_name, devices.temporary
+                SELECT devices.display_name, devices.temporary, devices.public_id
                 FROM sessions
                 JOIN devices ON devices.token_hash = sessions.device_token_hash
                 WHERE sessions.token_hash = ?
                 """,
                 (self._hash(session_token),),
             ).fetchone()
-        return (str(row[0]), bool(row[1])) if row else None
+        return (str(row[0]), bool(row[1]), str(row[2])) if row else None
+
+    @staticmethod
+    def _ensure_public_ids(connection: sqlite3.Connection) -> None:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info('devices')")}
+        if "public_id" not in columns:
+            connection.execute("ALTER TABLE devices ADD COLUMN public_id TEXT")
+        rows = connection.execute(
+            "SELECT token_hash FROM devices WHERE public_id IS NULL OR public_id = ''"
+        ).fetchall()
+        for (token_hash,) in rows:
+            connection.execute(
+                "UPDATE devices SET public_id = ? WHERE token_hash = ?",
+                (secrets.token_urlsafe(18), token_hash),
+            )
+        connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS devices_public_id_unique ON devices(public_id)"
+        )
 
     @staticmethod
     def _hash(token: str) -> str:

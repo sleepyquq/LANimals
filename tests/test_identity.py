@@ -1,3 +1,6 @@
+import hashlib
+import sqlite3
+
 from lanimals.identity import DeviceRegistry
 
 
@@ -46,3 +49,55 @@ def test_temporary_animal_pool_can_be_reused_without_login_failure(tmp_path):
 
     assert len(names) == 50
     assert all(name for name in names)
+
+
+def test_reused_temporary_names_still_have_distinct_public_identity_ids(tmp_path):
+    registry = DeviceRegistry(tmp_path / "chat.db")
+    identities = []
+    for index in range(21):
+        device_token = f"temporary-{index}"
+        registry.get_or_create(device_token, temporary=True)
+        session_token = registry.create_session(device_token)
+        identities.append(registry.session_identity(session_token))
+
+    assert identities[0] is not None and identities[20] is not None
+    assert identities[0][0] == identities[20][0]
+    assert identities[0][2] != identities[20][2]
+
+
+def test_existing_identity_database_gets_public_ids_without_invalidating_sessions(tmp_path):
+    database = tmp_path / "chat.db"
+    device_token = "existing-device"
+    session_token = "existing-session"
+    with sqlite3.connect(database) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE devices (
+                token_hash TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                temporary INTEGER NOT NULL
+            );
+            CREATE TABLE sessions (
+                token_hash TEXT PRIMARY KEY,
+                device_token_hash TEXT NOT NULL,
+                FOREIGN KEY(device_token_hash) REFERENCES devices(token_hash)
+            );
+            """
+        )
+        connection.execute(
+            "INSERT INTO devices VALUES (?, ?, 0)",
+            (hashlib.sha256(device_token.encode()).hexdigest(), "奶油小熊"),
+        )
+        connection.execute(
+            "INSERT INTO sessions VALUES (?, ?)",
+            (
+                hashlib.sha256(session_token.encode()).hexdigest(),
+                hashlib.sha256(device_token.encode()).hexdigest(),
+            ),
+        )
+
+    identity = DeviceRegistry(database).session_identity(session_token)
+
+    assert identity is not None
+    assert identity[:2] == ("奶油小熊", False)
+    assert len(identity[2]) >= 24

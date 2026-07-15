@@ -4,7 +4,10 @@ let translations = {};
 let currentLocale = "en";
 let socket = null;
 let reconnectTimer = null;
-let pendingFile = null;
+let currentIdentityId = null;
+let messageScrollbarHideTimer = null;
+let messageScrollbarPointerNearEdge = false;
+let pendingFiles = [];
 let sending = false;
 let dragDepth = 0;
 const messageCache = new Map();
@@ -18,17 +21,57 @@ const incognitoInput = document.querySelector("#incognito");
 const identityLabel = document.querySelector("#identity");
 const connectionLabel = document.querySelector("#connection");
 const messages = document.querySelector("#messages");
+const messagesScrollbar = document.querySelector("#messages-scrollbar");
+const messagesScrollbarThumb = document.querySelector("#messages-scrollbar-thumb");
 const emptyState = document.querySelector("#empty-state");
 const dropZone = document.querySelector("#drop-zone");
+const chatHeader = document.querySelector(".chat-header");
 const messageForm = document.querySelector("#message-form");
 const messageInput = document.querySelector("#message-input");
+const expandComposerButton = document.querySelector("#expand-composer");
 const fileInput = document.querySelector("#file-input");
 const filePreview = document.querySelector("#file-preview");
-const filePreviewName = document.querySelector("#file-preview-name");
-const filePreviewSize = document.querySelector("#file-preview-size");
-const removeFileButton = document.querySelector("#remove-file");
 const uploadStatus = document.querySelector("#upload-status");
 const sendButton = document.querySelector("#send-button");
+
+const MAX_ATTACHMENTS_PER_MESSAGE = 12;
+const MESSAGE_SCROLLBAR_EDGE_ZONE = 18;
+const MESSAGE_SCROLLBAR_HIDE_DELAY = 700;
+
+function revealMessageScrollbar() {
+  clearTimeout(messageScrollbarHideTimer);
+  messages.classList.add("scrollbar-active");
+}
+
+function scheduleMessageScrollbarHide(delay = MESSAGE_SCROLLBAR_HIDE_DELAY) {
+  clearTimeout(messageScrollbarHideTimer);
+  if (messageScrollbarPointerNearEdge) return;
+  messageScrollbarHideTimer = setTimeout(() => {
+    messages.classList.remove("scrollbar-active");
+  }, delay);
+}
+
+function pulseMessageScrollbar() {
+  revealMessageScrollbar();
+  scheduleMessageScrollbarHide();
+}
+
+function syncMessageScrollbar() {
+  const viewportHeight = messages.clientHeight;
+  const contentHeight = messages.scrollHeight;
+  const scrollRange = Math.max(0, contentHeight - viewportHeight);
+  messagesScrollbar.hidden = !viewportHeight || scrollRange <= 1;
+  if (messagesScrollbar.hidden) {
+    messages.classList.remove("scrollbar-active");
+    return;
+  }
+
+  const thumbHeight = Math.max(28, viewportHeight * (viewportHeight / contentHeight));
+  const thumbTravel = Math.max(0, viewportHeight - thumbHeight);
+  const thumbTop = scrollRange ? (messages.scrollTop / scrollRange) * thumbTravel : 0;
+  messagesScrollbarThumb.style.height = `${thumbHeight}px`;
+  messagesScrollbarThumb.style.transform = `translateY(${thumbTop}px)`;
+}
 
 function translation(key) {
   return key.split(".").reduce((value, part) => value?.[part], translations) ?? key;
@@ -42,7 +85,7 @@ function t(key, variables = {}) {
 }
 
 async function fetchLocale(locale) {
-  const response = await fetch(`/static/locales/${locale}.json`);
+  const response = await fetch(`/static/locales/${locale}.json`, { cache: "no-store" });
   if (!response.ok) throw new Error(`locale:${response.status}`);
   return response.json();
 }
@@ -74,6 +117,14 @@ function applyTranslations() {
   document.querySelectorAll("[data-i18n-aria-label]").forEach((element) => {
     element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
   });
+  syncComposerPlaceholder();
+}
+
+function syncComposerPlaceholder() {
+  const key = window.matchMedia("(max-width: 620px)").matches
+    ? "composer.placeholderMobile"
+    : "composer.placeholder";
+  messageInput.placeholder = t(key);
 }
 
 async function api(path, options = {}) {
@@ -99,6 +150,7 @@ function setConnection(key, online) {
 
 function showLogin(errorKey = null) {
   clearTimeout(reconnectTimer);
+  currentIdentityId = null;
   if (socket) {
     socket.onclose = null;
     socket.close();
@@ -106,6 +158,7 @@ function showLogin(errorKey = null) {
   }
   chatView.hidden = true;
   loginView.hidden = false;
+  setComposerFullscreen(false);
   loginError.textContent = errorKey ? t(errorKey) : "";
   passwordInput.value = "";
   requestAnimationFrame(() => passwordInput.focus());
@@ -114,6 +167,9 @@ function showLogin(errorKey = null) {
 async function showChat(identity) {
   loginView.hidden = true;
   chatView.hidden = false;
+  currentIdentityId = identity.identity_id;
+  syncChatHeaderHeight();
+  resizeTextarea();
   loginError.textContent = "";
   const temporarySuffix = identity.temporary ? ` · ${t("chat.temporary")}` : "";
   identityLabel.textContent = `${t("chat.identity", { name: identity.name })}${temporarySuffix}`;
@@ -165,10 +221,11 @@ function renderMessages() {
   if (!ordered.length) {
     emptyState.hidden = false;
     messages.append(emptyState);
+    requestAnimationFrame(syncMessageScrollbar);
     return;
   }
 
-  let previousSender = null;
+  let previousSenderKey = null;
   let previousDay = null;
   for (const message of ordered) {
     const date = new Date(message.created_at);
@@ -185,12 +242,15 @@ function renderMessages() {
       });
       separator.append(dateLabel);
       messages.append(separator);
-      previousSender = null;
+      previousSenderKey = null;
     }
 
-    const sameSender = previousSender === message.sender_name;
+    const senderKey = message.sender_id || message.sender_name;
+    const sameSender = previousSenderKey === senderKey;
+    const isSelf = Boolean(message.sender_id) && message.sender_id === currentIdentityId;
     const article = document.createElement("article");
     article.className = sameSender ? "message grouped" : "message";
+    if (isSelf) article.classList.add("self");
     article.dataset.messageId = String(message.id);
 
     if (!sameSender) {
@@ -214,31 +274,42 @@ function renderMessages() {
       content.append(bubble);
     }
 
-    if (message.attachment) {
-      const attachment = document.createElement("a");
-      attachment.className = "attachment";
-      attachment.href = `/api/files/${encodeURIComponent(message.attachment.id)}`;
-      attachment.innerHTML = '<span class="attachment-icon" aria-hidden="true">📄</span>';
-      const copy = document.createElement("span");
-      copy.className = "attachment-copy";
-      const name = document.createElement("strong");
-      name.className = "attachment-name";
-      name.textContent = message.attachment.original_name;
-      const size = document.createElement("small");
-      size.className = "attachment-size";
-      size.textContent = formatBytes(message.attachment.size);
-      copy.append(name, size);
-      attachment.append(copy);
-      if (!message.body) attachment.append(createMessageTime(message));
-      content.append(attachment);
+    const attachments = Array.isArray(message.attachments)
+      ? message.attachments
+      : (message.attachment ? [message.attachment] : []);
+    if (attachments.length) {
+      const attachmentList = document.createElement("div");
+      attachmentList.className = `attachment-list attachment-columns-${Math.min(attachments.length, 4)}`;
+      attachments.forEach((item, index) => {
+        const attachment = document.createElement("a");
+        attachment.className = "attachment";
+        attachment.href = `/api/files/${encodeURIComponent(item.id)}`;
+        attachment.innerHTML = '<span class="attachment-icon" aria-hidden="true">📄</span>';
+        const copy = document.createElement("span");
+        copy.className = "attachment-copy";
+        const name = document.createElement("strong");
+        name.className = "attachment-name";
+        name.textContent = item.original_name;
+        const size = document.createElement("small");
+        size.className = "attachment-size";
+        size.textContent = formatBytes(item.size);
+        copy.append(name, size);
+        attachment.append(copy);
+        if (!message.body && index === attachments.length - 1) {
+          attachment.append(createMessageTime(message));
+        }
+        attachmentList.append(attachment);
+      });
+      content.append(attachmentList);
     }
 
     article.append(content);
     messages.append(article);
-    previousSender = message.sender_name;
+    previousSenderKey = senderKey;
     previousDay = day;
   }
   updateMessageTimeLayouts();
+  requestAnimationFrame(syncMessageScrollbar);
 }
 
 function appendMessage(message) {
@@ -249,6 +320,7 @@ function appendMessage(message) {
 
 function scrollToLatest() {
   messages.scrollTop = messages.scrollHeight;
+  syncMessageScrollbar();
 }
 
 async function loadHistory() {
@@ -297,46 +369,138 @@ function connectWebSocket() {
 }
 
 function syncComposerSpace() {
+  syncChatHeaderHeight();
   const composerHeight = Math.ceil(messageForm.getBoundingClientRect().height);
+  document.documentElement.style.setProperty("--composer-height", `${composerHeight}px`);
   document.documentElement.style.setProperty("--composer-space", `${composerHeight + 40}px`);
 }
 
+function syncChatHeaderHeight() {
+  const headerHeight = Math.ceil(chatHeader.getBoundingClientRect().height);
+  if (headerHeight) document.documentElement.style.setProperty("--chat-header-height", `${headerHeight}px`);
+}
+
 function updateComposerLayout() {
-  const lineHeight = Number.parseFloat(getComputedStyle(messageInput).lineHeight) || 23;
+  const inputStyle = getComputedStyle(messageInput);
+  const lineHeight = Number.parseFloat(inputStyle.lineHeight) || 23;
+  const maxHeight = Number.parseFloat(inputStyle.maxHeight) || 180;
   const hasWrappedText = messageInput.scrollHeight > lineHeight * 1.8;
-  messageForm.classList.toggle("expanded", Boolean(pendingFile) || hasWrappedText || !uploadStatus.hidden);
+  const reachedMaxHeight = messageInput.scrollHeight >= maxHeight - 1;
+  messageForm.classList.toggle("expanded", Boolean(pendingFiles.length) || hasWrappedText || !uploadStatus.hidden);
+  messageForm.classList.toggle("can-fullscreen", reachedMaxHeight);
   requestAnimationFrame(syncComposerSpace);
 }
 
 function updateSendButton() {
-  sendButton.disabled = sending || (!messageInput.value.trim() && !pendingFile);
+  sendButton.disabled = sending || (!messageInput.value.trim() && !pendingFiles.length);
 }
 
 function resizeTextarea() {
-  messageInput.style.height = "auto";
-  messageInput.style.height = `${Math.min(messageInput.scrollHeight, 180)}px`;
+  if (dropZone.classList.contains("fullscreen")) {
+    messageInput.style.height = "";
+  } else {
+    messageInput.style.height = "auto";
+    const maxHeight = Number.parseFloat(getComputedStyle(messageInput).maxHeight) || 180;
+    messageInput.style.height = `${Math.min(messageInput.scrollHeight, maxHeight)}px`;
+  }
   updateComposerLayout();
   updateSendButton();
 }
 
-function setPendingFile(file) {
+function setComposerFullscreen(value) {
+  const fullscreen = Boolean(value);
+  dropZone.classList.toggle("fullscreen", fullscreen);
+  expandComposerButton.setAttribute("aria-expanded", String(fullscreen));
+  const label = t(fullscreen ? "composer.collapse" : "composer.expand");
+  expandComposerButton.title = label;
+  expandComposerButton.setAttribute("aria-label", label);
+  resizeTextarea();
+  requestAnimationFrame(() => {
+    syncComposerSpace();
+    if (!chatView.hidden && !messageInput.disabled) messageInput.focus();
+  });
+}
+
+function uniqueAttachmentNames(files) {
+  const used = new Set();
+  return files.map((file) => {
+    const original = file.name || "unnamed-file";
+    const dot = original.lastIndexOf(".");
+    const hasSuffix = dot > 0;
+    const stem = hasSuffix ? original.slice(0, dot) : original;
+    const suffix = hasSuffix ? original.slice(dot) : "";
+    let candidate = original;
+    let counter = 2;
+    while (used.has(candidate.normalize("NFKC").toLocaleLowerCase())) {
+      candidate = `${stem} (${counter})${suffix}`;
+      counter += 1;
+    }
+    used.add(candidate.normalize("NFKC").toLocaleLowerCase());
+    return candidate;
+  });
+}
+
+function renderPendingFiles() {
+  filePreview.replaceChildren();
+  const displayNames = uniqueAttachmentNames(pendingFiles);
+  pendingFiles.forEach((file, index) => {
+    const card = document.createElement("div");
+    card.className = "file-preview-card";
+    const icon = document.createElement("span");
+    icon.className = "file-preview-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "📎";
+    const copy = document.createElement("span");
+    copy.className = "file-preview-copy";
+    const name = document.createElement("strong");
+    name.textContent = displayNames[index];
+    const size = document.createElement("small");
+    size.textContent = formatBytes(file.size);
+    copy.append(name, size);
+    const removeButton = document.createElement("button");
+    removeButton.className = "remove-file";
+    removeButton.type = "button";
+    removeButton.disabled = sending;
+    removeButton.title = t("composer.removeFile");
+    removeButton.setAttribute("aria-label", `${t("composer.removeFile")} · ${displayNames[index]}`);
+    removeButton.textContent = "×";
+    removeButton.addEventListener("click", () => removePendingFile(index));
+    card.append(icon, copy, removeButton);
+    filePreview.append(card);
+  });
+  filePreview.hidden = !pendingFiles.length;
+}
+
+function appendPendingFiles(files) {
   if (sending) return;
-  if (!file) return;
-  pendingFile = file;
-  filePreviewName.textContent = file.name;
-  filePreviewSize.textContent = formatBytes(file.size);
-  filePreview.hidden = false;
-  uploadStatus.hidden = true;
+  const additions = [...files];
+  if (!additions.length) return;
+  const available = Math.max(0, MAX_ATTACHMENTS_PER_MESSAGE - pendingFiles.length);
+  pendingFiles.push(...additions.slice(0, available));
   fileInput.value = "";
+  if (additions.length > available) {
+    uploadStatus.hidden = false;
+    uploadStatus.textContent = t("upload.tooMany", { count: MAX_ATTACHMENTS_PER_MESSAGE });
+  } else {
+    uploadStatus.hidden = true;
+  }
+  renderPendingFiles();
   resizeTextarea();
 }
 
-function clearPendingFile(force = false) {
+function removePendingFile(index, force = false) {
   if (sending && !force) return;
-  pendingFile = null;
-  filePreview.hidden = true;
-  filePreviewName.textContent = "";
-  filePreviewSize.textContent = "";
+  pendingFiles.splice(index, 1);
+  renderPendingFiles();
+  fileInput.value = "";
+  updateComposerLayout();
+  updateSendButton();
+}
+
+function clearPendingFiles(force = false) {
+  if (sending && !force) return;
+  pendingFiles = [];
+  renderPendingFiles();
   fileInput.value = "";
   updateComposerLayout();
   updateSendButton();
@@ -346,24 +510,27 @@ function setSending(value) {
   sending = value;
   fileInput.disabled = value;
   messageInput.disabled = value;
-  removeFileButton.disabled = value;
   dropZone.classList.toggle("sending", value);
+  renderPendingFiles();
   updateSendButton();
 }
 
-function uploadCombinedMessage(body, file) {
+function uploadCombinedMessage(body, files) {
   return new Promise((resolve, reject) => {
     const form = new FormData();
     form.append("body", body);
-    form.append("file", file);
+    files.forEach((file) => form.append("files", file, file.name));
     const request = new XMLHttpRequest();
     request.open("POST", "/api/files");
     uploadStatus.hidden = false;
-    uploadStatus.textContent = t("upload.uploading", { name: file.name });
+    const uploadName = files.length === 1
+      ? files[0].name
+      : t("upload.fileCount", { count: files.length });
+    uploadStatus.textContent = t("upload.uploading", { name: uploadName });
     request.upload.addEventListener("progress", (event) => {
       if (!event.lengthComputable) return;
       const progress = Math.round((event.loaded / event.total) * 100);
-      uploadStatus.textContent = t("upload.progress", { name: file.name, progress });
+      uploadStatus.textContent = t("upload.progress", { name: uploadName, progress });
     });
     request.addEventListener("load", () => {
       if (request.status >= 200 && request.status < 300) {
@@ -391,18 +558,20 @@ messageForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (sending) return;
   const body = messageInput.value.trim();
-  const file = pendingFile;
-  if (!body && !file) return;
+  const files = [...pendingFiles];
+  if (!body && !files.length) return;
 
   setSending(true);
   try {
-    const message = file
-      ? await uploadCombinedMessage(body, file)
+    const message = files.length
+      ? await uploadCombinedMessage(body, files)
       : await api("/api/messages", { method: "POST", body: JSON.stringify({ body }) });
     appendMessage(message);
     messageInput.value = "";
     uploadStatus.hidden = true;
-    if (pendingFile === file) clearPendingFile(true);
+    if (pendingFiles.length === files.length && files.every((file, index) => pendingFiles[index] === file)) {
+      clearPendingFiles(true);
+    }
     resizeTextarea();
     scrollToLatest();
   } catch (error) {
@@ -425,8 +594,16 @@ messageInput.addEventListener("keydown", (event) => {
     messageForm.requestSubmit();
   }
 });
-fileInput.addEventListener("change", () => setPendingFile(fileInput.files?.[0]));
-removeFileButton.addEventListener("click", () => clearPendingFile());
+expandComposerButton.addEventListener("click", () => {
+  setComposerFullscreen(!dropZone.classList.contains("fullscreen"));
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && dropZone.classList.contains("fullscreen")) {
+    event.preventDefault();
+    setComposerFullscreen(false);
+  }
+});
+fileInput.addEventListener("change", () => appendPendingFiles(fileInput.files || []));
 
 for (const eventName of ["dragenter", "dragover", "dragleave", "drop"]) {
   dropZone.addEventListener(eventName, (event) => {
@@ -449,11 +626,7 @@ dropZone.addEventListener("drop", (event) => {
   dragDepth = 0;
   messageForm.classList.remove("dragging");
   const files = [...(event.dataTransfer?.files || [])];
-  if (files[0]) setPendingFile(files[0]);
-  if (files.length > 1) {
-    uploadStatus.hidden = false;
-    uploadStatus.textContent = t("upload.singleFile");
-  }
+  appendPendingFiles(files);
 });
 
 loginForm.addEventListener("submit", async (event) => {
@@ -470,6 +643,25 @@ loginForm.addEventListener("submit", async (event) => {
   }
 });
 
+messages.addEventListener("pointermove", (event) => {
+  if (event.pointerType && event.pointerType !== "mouse" && event.pointerType !== "pen") return;
+  const bounds = messages.getBoundingClientRect();
+  const pointerNearEdge = event.clientX >= bounds.right - MESSAGE_SCROLLBAR_EDGE_ZONE;
+  if (pointerNearEdge === messageScrollbarPointerNearEdge) return;
+  messageScrollbarPointerNearEdge = pointerNearEdge;
+  if (pointerNearEdge) revealMessageScrollbar();
+  else scheduleMessageScrollbarHide(180);
+});
+messages.addEventListener("pointerleave", () => {
+  messageScrollbarPointerNearEdge = false;
+  scheduleMessageScrollbarHide(180);
+});
+messages.addEventListener("wheel", pulseMessageScrollbar, { passive: true });
+messages.addEventListener("scroll", () => {
+  syncMessageScrollbar();
+  pulseMessageScrollbar();
+}, { passive: true });
+
 function syncVisualViewport() {
   const visualViewport = window.visualViewport;
   const visualBottom = visualViewport
@@ -484,9 +676,17 @@ const composerResizeObserver = "ResizeObserver" in window
   ? new ResizeObserver(syncComposerSpace)
   : null;
 composerResizeObserver?.observe(messageForm);
+composerResizeObserver?.observe(chatHeader);
+const messageScrollbarResizeObserver = "ResizeObserver" in window
+  ? new ResizeObserver(syncMessageScrollbar)
+  : null;
+messageScrollbarResizeObserver?.observe(messages);
 
 function handleWindowResize() {
+  syncChatHeaderHeight();
+  syncComposerPlaceholder();
   syncVisualViewport();
+  syncMessageScrollbar();
   requestAnimationFrame(updateMessageTimeLayouts);
 }
 

@@ -88,7 +88,7 @@ class UploadSizeLimitMiddleware:
             receive,
             send,
             status_code=413,
-            detail="上传请求体超过服务器允许的单文件上限",
+            detail="上传请求体超过服务器允许的附件总大小上限",
         )
 
     @staticmethod

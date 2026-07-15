@@ -20,6 +20,8 @@ from lanimals.limits import UploadSizeLimitMiddleware
 from lanimals.realtime import RealtimeHub
 from lanimals.store import ChatStore
 
+MAX_ATTACHMENTS_PER_MESSAGE = 12
+
 
 class LoginRequest(BaseModel):
     password: str
@@ -28,6 +30,25 @@ class LoginRequest(BaseModel):
 
 class MessageRequest(BaseModel):
     body: str = Field(min_length=1, max_length=4000)
+
+
+def _unique_attachment_names(files: list[UploadFile]) -> list[str]:
+    used: set[str] = set()
+    names: list[str] = []
+    for uploaded in files:
+        raw_name = (uploaded.filename or "unnamed-file").replace("\\", "/")
+        original_name = Path(raw_name).name.replace("\x00", "")[:255] or "unnamed-file"
+        suffix = Path(original_name).suffix
+        stem = original_name[: -len(suffix)] if suffix else original_name
+        candidate = original_name
+        counter = 2
+        while candidate.casefold() in used:
+            marker = f" ({counter})"
+            candidate = f"{stem[: max(1, 255 - len(suffix) - len(marker))]}{marker}{suffix}"
+            counter += 1
+        used.add(candidate.casefold())
+        names.append(candidate)
+    return names
 
 
 def create_app(
@@ -56,7 +77,7 @@ def create_app(
     web_dir = Path(__file__).parent / "web"
     app.mount("/static", StaticFiles(directory=web_dir), name="static")
 
-    def require_identity(session_token: str | None) -> tuple[str, bool]:
+    def require_identity(session_token: str | None) -> tuple[str, bool, str]:
         if not session_token:
             raise HTTPException(status_code=401, detail="请先登录")
         identity = registry.session_identity(session_token)
@@ -90,6 +111,10 @@ def create_app(
             active_device_token = device_token or secrets.token_urlsafe(32)
         name = registry.get_or_create(active_device_token, temporary=temporary)
         session_token = registry.create_session(active_device_token)
+        identity = registry.session_identity(session_token)
+        if identity is None:
+            raise RuntimeError("新建会话后无法读取设备身份")
+        identity_id = identity[2]
 
         response.set_cookie("lan_session", session_token, httponly=True, samesite="lax")
         if temporary:
@@ -102,20 +127,34 @@ def create_app(
                 samesite="lax",
                 max_age=60 * 60 * 24 * 365,
             )
-        return {"name": name, "temporary": temporary, "max_upload_bytes": max_upload_bytes}
+        return {
+            "name": name,
+            "temporary": temporary,
+            "identity_id": identity_id,
+            "max_upload_bytes": max_upload_bytes,
+        }
 
     @app.get("/api/me")
     def me(lan_session: str | None = Cookie(default=None)):
-        name, temporary = require_identity(lan_session)
-        return {"name": name, "temporary": temporary, "max_upload_bytes": max_upload_bytes}
+        name, temporary, identity_id = require_identity(lan_session)
+        return {
+            "name": name,
+            "temporary": temporary,
+            "identity_id": identity_id,
+            "max_upload_bytes": max_upload_bytes,
+        }
 
     @app.post("/api/messages", status_code=201)
     async def create_message(payload: MessageRequest, lan_session: str | None = Cookie(default=None)):
-        sender_name, _ = require_identity(lan_session)
+        sender_name, _, sender_id = require_identity(lan_session)
         body = payload.body.strip()
         if not body:
             raise HTTPException(status_code=422, detail="消息不能只包含空白字符")
-        message = chat_store.create_message(sender_name=sender_name, body=body)
+        message = chat_store.create_message(
+            sender_name=sender_name,
+            sender_id=sender_id,
+            body=body,
+        )
         await hub.broadcast(
             {"type": "message_created", "message": message},
             session_is_valid=lambda token: registry.session_identity(token) is not None,
@@ -133,53 +172,88 @@ def create_app(
 
     @app.post("/api/files", status_code=201)
     async def upload_file(
-        file: UploadFile = File(...),
+        files: list[UploadFile] = File(default=[]),
+        file: UploadFile | None = File(default=None),
         body: str = Form(default=""),
         lan_session: str | None = Cookie(default=None),
     ):
-        sender_name, _ = require_identity(lan_session)
+        sender_name, _, sender_id = require_identity(lan_session)
         body = body.strip()
         if len(body) > 4000:
             raise HTTPException(status_code=422, detail="消息不能超过 4000 个字符")
-        original_name = Path(file.filename or "unnamed-file").name.replace("\x00", "")[:255] or "unnamed-file"
-        attachment_id = uuid.uuid4().hex
-        storage_name = f"{attachment_id}.bin"
-        temporary_path = uploads_dir / f".{storage_name}.part"
-        final_path = uploads_dir / storage_name
-        size = 0
+        selected_files = list(files)
+        if file is not None:
+            selected_files.append(file)
+        if not selected_files:
+            raise HTTPException(status_code=422, detail="请至少选择一个附件")
+        if len(selected_files) > MAX_ATTACHMENTS_PER_MESSAGE:
+            raise HTTPException(
+                status_code=422,
+                detail=f"每条消息最多发送 {MAX_ATTACHMENTS_PER_MESSAGE} 个附件",
+            )
+
+        original_names = _unique_attachment_names(selected_files)
+        attachment_records: list[dict[str, object]] = []
+        temporary_paths: list[Path] = []
+        final_paths: list[Path] = []
+        total_size = 0
 
         try:
-            with temporary_path.open("wb") as destination:
-                while chunk := await file.read(1024 * 1024):
-                    size += len(chunk)
-                    if size > max_upload_bytes:
-                        raise HTTPException(
-                            status_code=413,
-                            detail=f"文件超过服务器设置的单文件上限（{max_upload_bytes} 字节）",
-                        )
-                    destination.write(chunk)
-            os.replace(temporary_path, final_path)
+            for uploaded, original_name in zip(selected_files, original_names, strict=True):
+                attachment_id = uuid.uuid4().hex
+                storage_name = f"{attachment_id}.bin"
+                temporary_path = uploads_dir / f".{storage_name}.part"
+                final_path = uploads_dir / storage_name
+                temporary_paths.append(temporary_path)
+                final_paths.append(final_path)
+                size = 0
+                with temporary_path.open("wb") as destination:
+                    while chunk := await uploaded.read(1024 * 1024):
+                        size += len(chunk)
+                        total_size += len(chunk)
+                        if total_size > max_upload_bytes:
+                            raise HTTPException(
+                                status_code=413,
+                                detail=f"附件总大小超过服务器设置的上限（{max_upload_bytes} 字节）",
+                            )
+                        destination.write(chunk)
+                attachment_records.append(
+                    {
+                        "id": attachment_id,
+                        "storage_name": storage_name,
+                        "original_name": original_name,
+                        "content_type": uploaded.content_type or "application/octet-stream",
+                        "size": size,
+                    }
+                )
+            for temporary_path, final_path in zip(temporary_paths, final_paths, strict=True):
+                os.replace(temporary_path, final_path)
+
             try:
-                message = chat_store.create_file_message(
-                    attachment_id=attachment_id,
+                message = chat_store.create_message_with_attachments(
                     sender_name=sender_name,
+                    sender_id=sender_id,
                     body=body,
-                    storage_name=storage_name,
-                    original_name=original_name,
-                    content_type=file.content_type or "application/octet-stream",
-                    size=size,
+                    attachments=attachment_records,
                 )
-                await hub.broadcast(
-                    {"type": "message_created", "message": message},
-                    session_is_valid=lambda token: registry.session_identity(token) is not None,
-                )
-                return message
             except Exception:
-                final_path.unlink(missing_ok=True)
+                for final_path in final_paths:
+                    final_path.unlink(missing_ok=True)
                 raise
+            await hub.broadcast(
+                {"type": "message_created", "message": message},
+                session_is_valid=lambda token: registry.session_identity(token) is not None,
+            )
+            return message
+        except Exception:
+            for final_path in final_paths:
+                final_path.unlink(missing_ok=True)
+            raise
         finally:
-            temporary_path.unlink(missing_ok=True)
-            await file.close()
+            for temporary_path in temporary_paths:
+                temporary_path.unlink(missing_ok=True)
+            for uploaded in selected_files:
+                await uploaded.close()
 
     @app.get("/api/files/{attachment_id}")
     def download_file(attachment_id: str, lan_session: str | None = Cookie(default=None)):
