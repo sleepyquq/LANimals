@@ -146,6 +146,19 @@ function createMessageTime(message) {
   return time;
 }
 
+function updateMessageTimeLayouts() {
+  const bubbles = [...messages.querySelectorAll(".bubble")];
+  for (const bubble of bubbles) bubble.classList.remove("multiline");
+  for (const bubble of bubbles) {
+    const body = bubble.querySelector(".message-body");
+    if (!body) continue;
+    const lineHeight = Number.parseFloat(getComputedStyle(body).lineHeight);
+    if (body.getBoundingClientRect().height > lineHeight * 1.5) {
+      bubble.classList.add("multiline");
+    }
+  }
+}
+
 function renderMessages() {
   const ordered = [...messageCache.values()].sort((left, right) => left.id - right.id);
   messages.replaceChildren();
@@ -225,6 +238,7 @@ function renderMessages() {
     previousSender = message.sender_name;
     previousDay = day;
   }
+  updateMessageTimeLayouts();
 }
 
 function appendMessage(message) {
@@ -471,11 +485,16 @@ const composerResizeObserver = "ResizeObserver" in window
   : null;
 composerResizeObserver?.observe(messageForm);
 
+function handleWindowResize() {
+  syncVisualViewport();
+  requestAnimationFrame(updateMessageTimeLayouts);
+}
+
 if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", syncVisualViewport);
+  window.visualViewport.addEventListener("resize", handleWindowResize);
   window.visualViewport.addEventListener("scroll", syncVisualViewport);
 }
-window.addEventListener("resize", syncVisualViewport);
+window.addEventListener("resize", handleWindowResize);
 messageInput.addEventListener("focus", () => setTimeout(syncVisualViewport, 80));
 messageInput.addEventListener("blur", () => setTimeout(syncVisualViewport, 80));
 

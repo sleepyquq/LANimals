@@ -108,3 +108,8 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert "font-size: 9px" in css
     assert "opacity: .68" in css
     assert "transform: translate(2px, 1px)" in css
+    assert "updateMessageTimeLayouts" in script
+    assert 'classList.add("multiline")' in script
+    assert ".bubble.multiline" in css
+    assert "padding: 10px 11px 8px 13px" in css
+    assert "row-gap: 0" in css
