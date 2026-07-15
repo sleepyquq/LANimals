@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+  <meta name="theme-color" content="#f6a84b">
+  <title>LANimals</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="shell">
+    <section id="login-view" class="login-card">
+      <div class="logo" aria-hidden="true">🦦</div>
+      <h1>LANimals</h1>
+      <p class="subtitle" data-i18n="app.subtitle"></p>
+      <form id="login-form">
+        <label for="password" data-i18n="login.passwordLabel"></label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required autofocus data-i18n-placeholder="login.passwordPlaceholder">
+        <label class="switch-row">
+          <input id="incognito" type="checkbox">
+          <span data-i18n="login.incognito"></span>
+        </label>
+        <p class="hint" data-i18n="login.incognitoHint"></p>
+        <button type="submit" data-i18n="login.enter"></button>
+        <p id="login-error" class="error" role="alert"></p>
+      </form>
+    </section>
+
+    <section id="chat-view" class="chat" hidden>
+      <header class="chat-header">
+        <div>
+          <h1>LANimals</h1>
+          <p id="identity" data-i18n="chat.identifying"></p>
+        </div>
+        <span id="connection" class="status offline" data-i18n="chat.connecting"></span>
+      </header>
+
+      <div id="messages" class="messages" aria-live="polite">
+        <div id="empty-state" class="empty">
+          <span aria-hidden="true">🐾</span>
+          <p data-i18n="empty.message"></p>
+        </div>
+      </div>
+
+      <footer id="drop-zone" class="composer">
+        <form id="message-form" class="composer-bubble">
+          <div id="file-preview" class="file-preview" hidden>
+            <span class="file-preview-icon" aria-hidden="true">📎</span>
+            <span class="file-preview-copy">
+              <strong id="file-preview-name"></strong>
+              <small id="file-preview-size"></small>
+            </span>
+            <button id="remove-file" class="remove-file" type="button" data-i18n-title="composer.removeFile" data-i18n-aria-label="composer.removeFile">×</button>
+          </div>
+          <textarea id="message-input" rows="1" maxlength="4000" data-i18n-placeholder="composer.placeholder"></textarea>
+          <div id="upload-status" class="upload-status" hidden></div>
+          <div class="composer-actions">
+            <label class="add-button" for="file-input" data-i18n-title="composer.addFile" data-i18n-aria-label="composer.addFile">＋</label>
+            <input id="file-input" type="file" hidden>
+            <button id="send-button" class="send-button" type="submit" disabled data-i18n-title="composer.send" data-i18n-aria-label="composer.send">
+              <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </form>
+      </footer>
+    </section>
+  </main>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

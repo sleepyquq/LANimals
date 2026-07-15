@@ -1,0 +1,47 @@
+{
+  "app": {
+    "subtitle": "局域网里的小动物共享聊天室"
+  },
+  "login": {
+    "passwordLabel": "群聊密码",
+    "passwordPlaceholder": "输入群聊密码",
+    "incognito": "无痕/临时设备",
+    "incognitoHint": "开启后使用神秘动物名称，关闭浏览器会话后不保留设备身份。",
+    "enter": "进入共享房间"
+  },
+  "chat": {
+    "identifying": "正在识别小动物…",
+    "identity": "你是：{name}",
+    "temporary": "临时设备",
+    "connecting": "连接中",
+    "connected": "已连接",
+    "reconnecting": "正在重连"
+  },
+  "empty": {
+    "message": "还没有消息，来留下第一个爪印吧。"
+  },
+  "composer": {
+    "placeholder": "输入消息，或将文件拖到这里…",
+    "addFile": "添加文件",
+    "removeFile": "移除文件",
+    "send": "发送",
+    "dropActive": "松手添加文件"
+  },
+  "upload": {
+    "selected": "已添加 {name}",
+    "uploading": "正在上传 {name}…",
+    "progress": "正在上传 {name} · {progress}%",
+    "sent": "{name} 已发送",
+    "failed": "上传失败（{status}）",
+    "networkError": "网络中断，文件未发送",
+    "tooLarge": "文件超过服务器允许的大小",
+    "singleFile": "当前每条消息支持一个文件"
+  },
+  "errors": {
+    "requestFailed": "请求失败（{status}）",
+    "wrongPassword": "群聊密码不正确",
+    "sessionExpired": "会话已失效，请重新登录",
+    "sendFailed": "消息发送失败，请重试",
+    "invalidResponse": "服务器响应格式异常，请重试"
+  }
+}

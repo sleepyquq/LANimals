@@ -1,0 +1,47 @@
+{
+  "app": {
+    "subtitle": "A cozy shared chat for your local network"
+  },
+  "login": {
+    "passwordLabel": "Room password",
+    "passwordPlaceholder": "Enter the room password",
+    "incognito": "Incognito / temporary device",
+    "incognitoHint": "Use a mysterious animal name for this browser session without saving a long-term device identity.",
+    "enter": "Enter shared room"
+  },
+  "chat": {
+    "identifying": "Finding your animal…",
+    "identity": "You are {name}",
+    "temporary": "temporary device",
+    "connecting": "Connecting",
+    "connected": "Connected",
+    "reconnecting": "Reconnecting"
+  },
+  "empty": {
+    "message": "No messages yet. Leave the first paw print."
+  },
+  "composer": {
+    "placeholder": "Type a message or drop a file here…",
+    "addFile": "Add file",
+    "removeFile": "Remove file",
+    "send": "Send",
+    "dropActive": "Drop to attach the file"
+  },
+  "upload": {
+    "selected": "Attached {name}",
+    "uploading": "Uploading {name}…",
+    "progress": "Uploading {name} · {progress}%",
+    "sent": "Sent {name}",
+    "failed": "Upload failed ({status})",
+    "networkError": "The connection was interrupted; the file was not sent",
+    "tooLarge": "The file exceeds the server limit",
+    "singleFile": "One file can be attached to each message for now"
+  },
+  "errors": {
+    "requestFailed": "Request failed ({status})",
+    "wrongPassword": "Incorrect room password",
+    "sessionExpired": "Your session expired. Please sign in again.",
+    "sendFailed": "Message failed to send. Please try again.",
+    "invalidResponse": "The server returned an invalid response. Please try again."
+  }
+}
