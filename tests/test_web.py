@@ -105,3 +105,6 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert 'copy.className = "attachment-copy"' in script
     assert ".attachment-copy { min-width: 0; flex: 1; }" in css
     assert "width: min(520px, calc(100vw - 52px))" in css
+    assert "font-size: 9px" in css
+    assert "opacity: .68" in css
+    assert "transform: translate(2px, 1px)" in css
