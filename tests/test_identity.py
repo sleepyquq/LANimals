@@ -31,6 +31,14 @@ def test_many_persistent_devices_receive_unique_animal_names_without_numeric_suf
     assert all(not any(character.isdigit() for character in name) for name in names)
 
 
+def test_early_persistent_devices_rotate_both_prefixes_and_animals(tmp_path):
+    registry = DeviceRegistry(tmp_path / "chat.db")
+
+    names = [registry.get_or_create(f"device-{index}", temporary=False) for index in range(4)]
+
+    assert names == ["奶油小熊", "云朵水獭", "薄荷小兔", "橘子小猫"]
+
+
 def test_temporary_animal_pool_can_be_reused_without_login_failure(tmp_path):
     registry = DeviceRegistry(tmp_path / "chat.db")
 

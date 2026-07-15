@@ -12,6 +12,8 @@ class ChatStore:
         self.database = Path(database)
         self.database.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA synchronous = NORMAL")
             connection.executescript(
                 """
                 PRAGMA foreign_keys = ON;
@@ -141,5 +143,6 @@ class ChatStore:
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database, timeout=10)
+        connection.execute("PRAGMA busy_timeout = 10000")
         connection.execute("PRAGMA foreign_keys = ON")
         return connection

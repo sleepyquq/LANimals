@@ -7,7 +7,7 @@ let reconnectTimer = null;
 let pendingFile = null;
 let sending = false;
 let dragDepth = 0;
-const renderedMessageIds = new Set();
+const messageCache = new Map();
 
 const loginView = document.querySelector("#login-view");
 const chatView = document.querySelector("#chat-view");
@@ -91,7 +91,9 @@ async function api(path, options = {}) {
 }
 
 function setConnection(key, online) {
-  connectionLabel.textContent = t(key);
+  const label = t(key);
+  connectionLabel.textContent = "";
+  connectionLabel.setAttribute("aria-label", label);
   connectionLabel.classList.toggle("offline", !online);
 }
 
@@ -131,54 +133,104 @@ function formatBytes(value) {
   return `${new Intl.NumberFormat(currentLocale, { maximumFractionDigits: unit ? 1 : 0 }).format(size)} ${units[unit]}`;
 }
 
-function appendMessage(message) {
-  if (renderedMessageIds.has(message.id)) return;
-  renderedMessageIds.add(message.id);
-  emptyState.hidden = true;
+function calendarDayKey(date) {
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
 
-  const article = document.createElement("article");
-  article.className = "message";
-  article.dataset.messageId = String(message.id);
-
-  const meta = document.createElement("div");
-  meta.className = "message-meta";
-  const sender = document.createElement("strong");
-  sender.textContent = message.sender_name;
+function createMessageTime(message) {
   const time = document.createElement("time");
   const date = new Date(message.created_at);
+  time.className = "message-time";
   time.dateTime = message.created_at;
-  time.textContent = date.toLocaleString(currentLocale, { dateStyle: "short", timeStyle: "short" });
-  meta.append(sender, time);
-  article.append(meta);
+  time.textContent = date.toLocaleTimeString(currentLocale, { hour: "2-digit", minute: "2-digit" });
+  return time;
+}
 
-  const content = document.createElement("div");
-  content.className = "message-content";
-  if (message.body) {
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-    bubble.textContent = message.body;
-    content.append(bubble);
+function renderMessages() {
+  const ordered = [...messageCache.values()].sort((left, right) => left.id - right.id);
+  messages.replaceChildren();
+  if (!ordered.length) {
+    emptyState.hidden = false;
+    messages.append(emptyState);
+    return;
   }
 
-  if (message.attachment) {
-    const attachment = document.createElement("a");
-    attachment.className = "attachment";
-    attachment.href = `/api/files/${encodeURIComponent(message.attachment.id)}`;
-    attachment.innerHTML = '<span class="attachment-icon" aria-hidden="true">📄</span>';
-    const copy = document.createElement("span");
-    const name = document.createElement("strong");
-    name.className = "attachment-name";
-    name.textContent = message.attachment.original_name;
-    const size = document.createElement("small");
-    size.className = "attachment-size";
-    size.textContent = formatBytes(message.attachment.size);
-    copy.append(name, size);
-    attachment.append(copy);
-    content.append(attachment);
-  }
+  let previousSender = null;
+  let previousDay = null;
+  for (const message of ordered) {
+    const date = new Date(message.created_at);
+    const day = calendarDayKey(date);
+    if (day !== previousDay) {
+      const separator = document.createElement("div");
+      separator.className = "date-separator";
+      const dateLabel = document.createElement("time");
+      dateLabel.dateTime = day;
+      dateLabel.textContent = date.toLocaleDateString(currentLocale, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      separator.append(dateLabel);
+      messages.append(separator);
+      previousSender = null;
+    }
 
-  article.append(content);
-  messages.append(article);
+    const sameSender = previousSender === message.sender_name;
+    const article = document.createElement("article");
+    article.className = sameSender ? "message grouped" : "message";
+    article.dataset.messageId = String(message.id);
+
+    if (!sameSender) {
+      const meta = document.createElement("div");
+      meta.className = "message-meta";
+      const sender = document.createElement("strong");
+      sender.textContent = message.sender_name;
+      meta.append(sender);
+      article.append(meta);
+    }
+
+    const content = document.createElement("div");
+    content.className = "message-content";
+    if (message.body) {
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      const body = document.createElement("span");
+      body.className = "message-body";
+      body.textContent = message.body;
+      bubble.append(body, createMessageTime(message));
+      content.append(bubble);
+    }
+
+    if (message.attachment) {
+      const attachment = document.createElement("a");
+      attachment.className = "attachment";
+      attachment.href = `/api/files/${encodeURIComponent(message.attachment.id)}`;
+      attachment.innerHTML = '<span class="attachment-icon" aria-hidden="true">📄</span>';
+      const copy = document.createElement("span");
+      copy.className = "attachment-copy";
+      const name = document.createElement("strong");
+      name.className = "attachment-name";
+      name.textContent = message.attachment.original_name;
+      const size = document.createElement("small");
+      size.className = "attachment-size";
+      size.textContent = formatBytes(message.attachment.size);
+      copy.append(name, size);
+      attachment.append(copy);
+      if (!message.body) attachment.append(createMessageTime(message));
+      content.append(attachment);
+    }
+
+    article.append(content);
+    messages.append(article);
+    previousSender = message.sender_name;
+    previousDay = day;
+  }
+}
+
+function appendMessage(message) {
+  if (messageCache.has(message.id)) return;
+  messageCache.set(message.id, message);
+  renderMessages();
 }
 
 function scrollToLatest() {
@@ -195,8 +247,8 @@ async function loadHistory() {
     if (batch.length < 200) break;
     before = batch[0].id;
   }
-  collected.forEach(appendMessage);
-  emptyState.hidden = renderedMessageIds.size > 0;
+  collected.forEach((message) => messageCache.set(message.id, message));
+  renderMessages();
   scrollToLatest();
 }
 

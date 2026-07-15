@@ -55,6 +55,7 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     with TestClient(app) as browser:
         page = browser.get("/").text
         script = browser.get("/static/app.js").text
+        css = browser.get("/static/app.css").text
         zh = browser.get("/static/locales/zh-CN.json")
         en = browser.get("/static/locales/en.json")
 
@@ -88,3 +89,19 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert "updateSendButton" in script
     assert "messageInput.value.trim()" in script
     assert "!pendingFile" in script
+    assert "position: sticky" in css
+    assert ".chat-header::after" in css
+    assert "backdrop-filter" in css
+    assert "border-bottom: 0" in css
+    assert "bottom: calc(18px + env(safe-area-inset-bottom) + var(--keyboard-offset))" in css
+    assert 'id="connection" class="status offline" role="status"' in page
+    assert 'data-i18n="chat.connecting"' not in page
+    assert "date-separator" in script
+    assert "message-time" in script
+    assert "previousSender" in script
+    assert ".message.grouped" in css
+    assert 'class="brand-row"' in page
+    assert ".brand-row { display: flex; align-items: center; gap: 10px; }" in css
+    assert 'copy.className = "attachment-copy"' in script
+    assert ".attachment-copy { min-width: 0; flex: 1; }" in css
+    assert "width: min(520px, calc(100vw - 52px))" in css

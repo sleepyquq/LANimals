@@ -29,10 +29,12 @@
     <section id="chat-view" class="chat" hidden>
       <header class="chat-header">
         <div>
-          <h1>LANimals</h1>
+          <div class="brand-row">
+            <h1>LANimals</h1>
+            <span id="connection" class="status offline" role="status" data-i18n-aria-label="chat.connecting"></span>
+          </div>
           <p id="identity" data-i18n="chat.identifying"></p>
         </div>
-        <span id="connection" class="status offline" data-i18n="chat.connecting"></span>
       </header>
 
       <div id="messages" class="messages" aria-live="polite">

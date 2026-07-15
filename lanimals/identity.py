@@ -9,7 +9,11 @@ from pathlib import Path
 
 _PERSISTENT_PREFIXES = ("奶油", "云朵", "薄荷", "橘子", "松饼", "星糖", "桃子", "栗子", "棉花", "蜂蜜", "雨滴", "森林")
 _PERSISTENT_ANIMALS = ("小熊", "水獭", "小兔", "小猫", "小狗", "松鼠", "海豹", "企鹅", "刺猬", "浣熊", "羊驼", "熊猫")
-PERSISTENT_NAMES = tuple(f"{prefix}{animal}" for prefix in _PERSISTENT_PREFIXES for animal in _PERSISTENT_ANIMALS)
+PERSISTENT_NAMES = tuple(
+    f"{_PERSISTENT_PREFIXES[(animal_index + offset) % len(_PERSISTENT_PREFIXES)]}{animal}"
+    for offset in range(len(_PERSISTENT_PREFIXES))
+    for animal_index, animal in enumerate(_PERSISTENT_ANIMALS)
+)
 TEMPORARY_NAMES = (
     "夜枭", "雾狐", "月貘", "星鸦", "影猫", "霜狼", "梦鹿", "云豹", "玄鹤", "暮兔",
     "夜獭", "雾熊", "月鲸", "星狐", "影貘", "霜鸮", "梦狸", "云鹿", "玄猫", "暮鸦",
@@ -21,6 +25,8 @@ class DeviceRegistry:
         self.database = Path(database)
         self.database.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA synchronous = NORMAL")
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS devices (
@@ -39,6 +45,7 @@ class DeviceRegistry:
     def get_or_create(self, token: str, *, temporary: bool) -> str:
         token_hash = self._hash(token)
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 "SELECT display_name FROM devices WHERE token_hash = ?", (token_hash,)
             ).fetchone()
@@ -99,4 +106,7 @@ class DeviceRegistry:
         return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.database)
+        connection = sqlite3.connect(self.database, timeout=10)
+        connection.execute("PRAGMA busy_timeout = 10000")
+        connection.execute("PRAGMA foreign_keys = ON")
+        return connection
