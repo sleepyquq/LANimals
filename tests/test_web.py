@@ -67,15 +67,25 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert zh.json()["composer"]["expand"]
     assert zh.json()["composer"]["collapse"]
     assert zh.json()["upload"]["tooMany"]
+    assert zh.json()["upload"]["readFailed"]
+    assert zh.json()["upload"]["retry"]
     assert en.json()["composer"]["placeholder"]
     assert en.json()["composer"]["placeholderMobile"] == "Message…"
     assert en.json()["composer"]["expand"]
     assert en.json()["composer"]["collapse"]
     assert en.json()["upload"]["tooMany"]
+    assert en.json()["upload"]["readFailed"]
+    assert en.json()["upload"]["retry"]
     assert 'data-i18n="' in page
     assert 'data-i18n-placeholder="composer.placeholder"' in page
     assert 'id="drop-zone"' in page
     assert 'id="file-preview"' in page
+    assert 'id="attachment-status"' in page
+    assert 'id="upload-status"' in page
+    assert 'id="upload-progress"' in page
+    assert 'id="upload-progress-bar"' in page
+    assert 'id="retry-upload"' in page
+    assert page.index('id="file-preview"') < page.index('id="attachment-status"') < page.index('id="message-input"')
     assert 'id="remove-file"' not in page
     assert 'id="file-input" type="file" multiple hidden' in page
     assert 'id="expand-composer"' in page
@@ -100,6 +110,11 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert "let pendingFiles = [];" in script
     assert "appendPendingFiles" in script
     assert "MAX_ATTACHMENTS_PER_MESSAGE = 12" in script
+    assert "currentMaxUploadBytes" in script
+    assert "validateReadableFiles" in script
+    assert "showAttachmentStatus" in script
+    assert "clearAttachmentStatus" in script
+    assert 'retryUploadButton.addEventListener("click"' in script
     assert "if (sending) return" in script
     assert "loadHistory();" in script
     assert "fetchLocale" in script
@@ -132,6 +147,10 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert "max-width: min(680px, calc(100vw - 52px))" in css
     assert ".file-preview { grid-area: file; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));" in css
     assert ".file-preview-card" in css
+    assert ".attachment-status { grid-area: status;" in css
+    assert ".attachment-progress-bar" in css
+    assert ".attachment-status.error" in css
+    assert ".retry-upload" in css
     assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in css
     assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in css
     assert ".attachment-list" in css
@@ -222,7 +241,7 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert "border-radius: 30px;" in fullscreen_bubble_css
     assert "border: 0;" not in fullscreen_bubble_css
     assert "box-shadow: none;" not in fullscreen_bubble_css
-    assert "chatView.hidden = false;\n  currentIdentityId = identity.identity_id;\n  syncChatHeaderHeight();\n  resizeTextarea();" in script
+    assert "chatView.hidden = false;\n  currentIdentityId = identity.identity_id;\n  currentMaxUploadBytes = Number(identity.max_upload_bytes) || null;\n  syncChatHeaderHeight();\n  resizeTextarea();" in script
     assert "let currentIdentityId = null;" in script
     assert "currentIdentityId = identity.identity_id;" in script
     assert "const senderKey = message.sender_id || message.sender_name;" in script

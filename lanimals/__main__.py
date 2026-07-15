@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
-import ipaddress
 import os
-import socket
 from pathlib import Path
 from typing import Sequence
 
@@ -15,6 +13,13 @@ import uvicorn
 from lanimals.cli import change_password, clear_data
 from lanimals.config import create_config, load_config, update_max_upload_size
 from lanimals.main import create_app
+from lanimals.network import (
+    advertise_mdns,
+    discover_lan_ipv4,
+    is_private_lan_ipv4 as _is_private_lan_ipv4,
+    mdns_name_matches,
+    terminal_qr,
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -44,29 +49,34 @@ def _prompt_new_password() -> str:
     return first
 
 
-def _is_private_lan_ipv4(value: str) -> bool:
-    try:
-        address = ipaddress.IPv4Address(value)
-    except ipaddress.AddressValueError:
-        return False
-    private_networks = (
-        ipaddress.IPv4Network("10.0.0.0/8"),
-        ipaddress.IPv4Network("172.16.0.0/12"),
-        ipaddress.IPv4Network("192.168.0.0/16"),
-    )
-    return any(address in network for network in private_networks)
-
-
 def _lan_ip() -> str:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    return discover_lan_ipv4().address
+
+
+def _print_join_information(bind_host: str, port: int, selection, mdns_available: bool) -> None:
+    if selection is not None:
+        if selection.adapter:
+            print(f"已选择网卡: {selection.adapter} ({selection.address})")
+        else:
+            print("未检测到可靠的局域网网卡，仅允许本机访问。")
+        if len(selection.candidates) > 1:
+            alternatives = "、".join(
+                f"{candidate.adapter} ({candidate.address})" for candidate in selection.candidates[1:]
+            )
+            print(f"其他可用地址: {alternatives}")
+
+    ip_url = f"http://{bind_host}:{port}/"
+    join_url = f"http://lanimals.local:{port}/" if mdns_available else ip_url
+    print(f"推荐访问: {join_url}")
+    if join_url != ip_url:
+        print(f"备用地址: {ip_url}")
+    print("手机扫码加入（二维码只包含访问地址，不包含群聊密码）:")
     try:
-        sock.connect(("192.0.2.1", 80))
-        candidate = str(sock.getsockname()[0])
-        return candidate if _is_private_lan_ipv4(candidate) else "127.0.0.1"
-    except OSError:
-        return "127.0.0.1"
-    finally:
-        sock.close()
+        print(terminal_qr(join_url), end="")
+    except (OSError, UnicodeError, ValueError):
+        print("当前终端无法显示二维码，请手动输入上方地址。")
+    print("若其他设备无法访问，请允许 Python 通过 Windows 防火墙的专用网络。")
+    print("访客 Wi-Fi、客户端隔离或跨 VLAN 网络可能阻止设备互访。")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -85,10 +95,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             password_hash_provider=lambda: load_config(data_dir).password_hash,
             max_upload_bytes=config.max_upload_bytes,
         )
-        bind_host = _lan_ip() if config.host == "auto" else config.host
-        print(f"访问地址: http://{bind_host}:{config.port}")
+        selection = discover_lan_ipv4() if config.host == "auto" else None
+        bind_host = selection.address if selection is not None else config.host
+        advertisement = None
+        if _is_private_lan_ipv4(bind_host):
+            try:
+                advertisement = advertise_mdns(bind_host, config.port)
+            except Exception as error:
+                print(f"局域网名称广播不可用，将使用 IP 地址访问：{error}")
+        mdns_available = advertisement is not None and mdns_name_matches(bind_host)
+        if advertisement is not None and not mdns_available:
+            print("lanimals.local 未解析到当前局域网地址，二维码将使用 IP。")
+            print("若正在使用代理/TUN，请将 *.local 和局域网地址设为直连。")
+        _print_join_information(bind_host, config.port, selection, mdns_available)
         print(f"数据目录: {data_dir}")
-        uvicorn.run(app, host=bind_host, port=config.port)
+        try:
+            uvicorn.run(app, host=bind_host, port=config.port)
+        finally:
+            if advertisement is not None:
+                advertisement.close()
         return 0
 
     if args.command == "clear":

@@ -1,5 +1,6 @@
 from lanimals import __main__ as command
 from lanimals.config import load_config, verify_password
+from lanimals.network import LanCandidate, LanSelection
 
 
 def test_auto_bind_accepts_only_rfc1918_lan_addresses():
@@ -16,7 +17,18 @@ def test_first_serve_prompts_host_for_password_and_starts_with_saved_hash(tmp_pa
     started = {}
 
     monkeypatch.setattr(command.getpass, "getpass", lambda _prompt: next(answers))
-    monkeypatch.setattr(command, "_lan_ip", lambda: "192.168.1.50")
+    monkeypatch.setattr(
+        command,
+        "discover_lan_ipv4",
+        lambda: LanSelection(
+            address="192.168.1.50",
+            adapter="Wi-Fi",
+            candidates=(LanCandidate(address="192.168.1.50", adapter="Wi-Fi", score=125),),
+        ),
+    )
+    monkeypatch.setattr(command, "advertise_mdns", lambda *_args: None)
+    monkeypatch.setattr(command, "mdns_name_matches", lambda *_args: False)
+    monkeypatch.setattr(command, "terminal_qr", lambda url: f"QR:{url}\n")
     monkeypatch.setattr(
         command.uvicorn,
         "run",
@@ -31,6 +43,46 @@ def test_first_serve_prompts_host_for_password_and_starts_with_saved_hash(tmp_pa
     assert started["app"].title == "LANimals"
     assert started["options"]["host"] == "192.168.1.50"
     assert started["options"]["port"] == 8787
+
+
+def test_serve_prints_local_name_ip_fallback_qr_and_network_guidance(tmp_path, monkeypatch, capsys):
+    from lanimals.config import create_config
+
+    create_config(tmp_path, password="host-password")
+    closed = []
+
+    class FakeAdvertisement:
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(
+        command,
+        "discover_lan_ipv4",
+        lambda: LanSelection(
+            address="192.168.0.103",
+            adapter="Wi-Fi",
+            candidates=(
+                LanCandidate(address="192.168.0.103", adapter="Wi-Fi", score=125),
+                LanCandidate(address="192.168.0.104", adapter="以太网", score=25),
+            ),
+        ),
+    )
+    monkeypatch.setattr(command, "advertise_mdns", lambda *_args: FakeAdvertisement())
+    monkeypatch.setattr(command, "mdns_name_matches", lambda *_args: True)
+    monkeypatch.setattr(command, "terminal_qr", lambda url: f"QR:{url}\n")
+    monkeypatch.setattr(command.uvicorn, "run", lambda *_args, **_options: None)
+
+    assert command.main(["serve", "--data-dir", str(tmp_path)]) == 0
+
+    output = capsys.readouterr().out
+    assert "已选择网卡: Wi-Fi (192.168.0.103)" in output
+    assert "其他可用地址: 以太网 (192.168.0.104)" in output
+    assert "推荐访问: http://lanimals.local:8787/" in output
+    assert "备用地址: http://192.168.0.103:8787/" in output
+    assert "QR:http://lanimals.local:8787/" in output
+    assert "Windows 防火墙" in output
+    assert "访客 Wi-Fi" in output
+    assert closed == [True]
 
 
 def test_clear_command_requires_exact_local_confirmation(tmp_path, monkeypatch):

@@ -39,7 +39,9 @@
     "failed": "Upload failed ({status})",
     "networkError": "The connection was interrupted; the file was not sent",
     "tooLarge": "The attachments exceed the server size limit",
-    "tooMany": "Each message can include up to {count} attachments"
+    "tooMany": "Each message can include up to {count} attachments",
+    "readFailed": "Could not read {name}",
+    "retry": "Retry"
   },
   "errors": {
     "requestFailed": "Request failed ({status})",

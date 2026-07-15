@@ -169,8 +169,8 @@ input[type="password"]:focus { border-color: var(--orange); box-shadow: 0 0 0 3p
   grid-template-columns: 40px minmax(0, 1fr) 40px;
   grid-template-areas:
     "file file file"
-    "add input send"
-    "status status status";
+    "status status status"
+    "add input send";
   align-items: center;
   column-gap: 8px;
   width: min(760px, 100%);
@@ -189,8 +189,8 @@ input[type="password"]:focus { border-color: var(--orange); box-shadow: 0 0 0 3p
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
     "file"
-    "input"
     "status"
+    "input"
     "actions";
   align-items: stretch;
   padding: 10px;
@@ -322,7 +322,26 @@ textarea::-webkit-scrollbar-button:horizontal:increment,
 .file-preview-copy small { display: block; color: var(--muted); font-size: 11px; }
 .remove-file { flex: none; width: 26px; height: 26px; border-radius: 50%; color: #795f48; background: transparent; font-size: 18px; }
 .remove-file:hover { background: rgba(111,80,47,.09); }
-.upload-status { grid-area: status; margin: 3px 8px 4px; color: var(--muted); font-size: 12px; }
+.attachment-status { grid-area: status; min-width: 0; margin: 0 8px 5px; color: var(--muted); font-size: 12px; }
+.attachment-status-row { display: flex; align-items: center; gap: 8px; min-height: 18px; }
+#upload-status { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.upload-progress-label { flex: none; font-variant-numeric: tabular-nums; }
+.attachment-status.error { color: #ad473b; }
+.retry-upload {
+  flex: none;
+  min-height: 28px;
+  margin: -5px -7px -5px 0;
+  padding: 4px 7px;
+  border: 0;
+  color: #a45422;
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+}
+.retry-upload:hover, .retry-upload:focus-visible { color: #713514; text-decoration: underline; }
+.retry-upload:focus-visible { outline: 2px solid rgba(238,143,54,.3); outline-offset: 1px; border-radius: 6px; }
+.attachment-progress { height: 3px; margin-top: 3px; overflow: hidden; border-radius: 999px; background: #e8e2da; }
+.attachment-progress-bar { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--orange); transition: width 160ms ease-out; }
 .composer.sending .add-button { pointer-events: none; opacity: .45; }
 .composer.fullscreen {
   top: var(--chat-header-height);
@@ -334,11 +353,11 @@ textarea::-webkit-scrollbar-button:horizontal:increment,
 .composer.fullscreen .composer-bubble {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   grid-template-areas:
     "file"
-    "input"
     "status"
+    "input"
     "actions";
   align-items: stretch;
   width: min(760px, 100%);

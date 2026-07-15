@@ -9,3 +9,7 @@ def test_wheel_package_data_includes_locale_json_files():
 
     package_data = config["tool"]["setuptools"]["package-data"]["lanimals"]
     assert "web/locales/*.json" in package_data
+
+    package_discovery = config["tool"]["setuptools"]["packages"]["find"]
+    assert package_discovery["include"] == ["lanimals*"]
+    assert "data*" in package_discovery["exclude"]

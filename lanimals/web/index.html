@@ -50,6 +50,16 @@
       <footer id="drop-zone" class="composer">
         <form id="message-form" class="composer-bubble">
           <div id="file-preview" class="file-preview" hidden></div>
+          <div id="attachment-status" class="attachment-status" role="status" aria-live="polite" hidden>
+            <div class="attachment-status-row">
+              <span id="upload-status"></span>
+              <span id="upload-progress-label" class="upload-progress-label" hidden></span>
+              <button id="retry-upload" class="retry-upload" type="button" data-i18n="upload.retry" hidden></button>
+            </div>
+            <div id="upload-progress" class="attachment-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" hidden>
+              <span id="upload-progress-bar" class="attachment-progress-bar"></span>
+            </div>
+          </div>
           <textarea id="message-input" rows="1" maxlength="4000" data-i18n-placeholder="composer.placeholder"></textarea>
           <button id="expand-composer" class="expand-button" type="button" data-i18n-title="composer.expand" data-i18n-aria-label="composer.expand" aria-expanded="false">
             <svg class="expand-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -57,7 +67,6 @@
               <path class="collapse-glyph" d="M14 5v5h5M10 19v-5H5" fill="none" stroke="currentColor" stroke-width="2.2"/>
             </svg>
           </button>
-          <div id="upload-status" class="upload-status" hidden></div>
           <div class="composer-actions">
             <label class="add-button" for="file-input" data-i18n-title="composer.addFile" data-i18n-aria-label="composer.addFile">
               <svg class="add-icon" viewBox="0 0 24 24" aria-hidden="true">

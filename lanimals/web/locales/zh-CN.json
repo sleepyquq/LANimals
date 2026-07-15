@@ -39,7 +39,9 @@
     "failed": "上传失败（{status}）",
     "networkError": "网络中断，文件未发送",
     "tooLarge": "附件总大小超过服务器允许的大小",
-    "tooMany": "每条消息最多发送 {count} 个附件"
+    "tooMany": "每条消息最多发送 {count} 个附件",
+    "readFailed": "无法读取 {name}",
+    "retry": "重试"
   },
   "errors": {
     "requestFailed": "请求失败（{status}）",

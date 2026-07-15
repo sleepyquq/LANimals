@@ -8,6 +8,7 @@ let currentIdentityId = null;
 let messageScrollbarHideTimer = null;
 let messageScrollbarPointerNearEdge = false;
 let pendingFiles = [];
+let currentMaxUploadBytes = null;
 let sending = false;
 let dragDepth = 0;
 const messageCache = new Map();
@@ -31,7 +32,12 @@ const messageInput = document.querySelector("#message-input");
 const expandComposerButton = document.querySelector("#expand-composer");
 const fileInput = document.querySelector("#file-input");
 const filePreview = document.querySelector("#file-preview");
+const attachmentStatus = document.querySelector("#attachment-status");
 const uploadStatus = document.querySelector("#upload-status");
+const uploadProgress = document.querySelector("#upload-progress");
+const uploadProgressBar = document.querySelector("#upload-progress-bar");
+const uploadProgressLabel = document.querySelector("#upload-progress-label");
+const retryUploadButton = document.querySelector("#retry-upload");
 const sendButton = document.querySelector("#send-button");
 
 const MAX_ATTACHMENTS_PER_MESSAGE = 12;
@@ -151,6 +157,7 @@ function setConnection(key, online) {
 function showLogin(errorKey = null) {
   clearTimeout(reconnectTimer);
   currentIdentityId = null;
+  currentMaxUploadBytes = null;
   if (socket) {
     socket.onclose = null;
     socket.close();
@@ -168,6 +175,7 @@ async function showChat(identity) {
   loginView.hidden = true;
   chatView.hidden = false;
   currentIdentityId = identity.identity_id;
+  currentMaxUploadBytes = Number(identity.max_upload_bytes) || null;
   syncChatHeaderHeight();
   resizeTextarea();
   loginError.textContent = "";
@@ -386,7 +394,7 @@ function updateComposerLayout() {
   const maxHeight = Number.parseFloat(inputStyle.maxHeight) || 180;
   const hasWrappedText = messageInput.scrollHeight > lineHeight * 1.8;
   const reachedMaxHeight = messageInput.scrollHeight >= maxHeight - 1;
-  messageForm.classList.toggle("expanded", Boolean(pendingFiles.length) || hasWrappedText || !uploadStatus.hidden);
+  messageForm.classList.toggle("expanded", Boolean(pendingFiles.length) || hasWrappedText || !attachmentStatus.hidden);
   messageForm.classList.toggle("can-fullscreen", reachedMaxHeight);
   requestAnimationFrame(syncComposerSpace);
 }
@@ -440,6 +448,53 @@ function uniqueAttachmentNames(files) {
   });
 }
 
+function clearAttachmentStatus() {
+  attachmentStatus.hidden = true;
+  attachmentStatus.classList.remove("error");
+  uploadStatus.textContent = "";
+  uploadProgress.hidden = true;
+  uploadProgress.removeAttribute("aria-valuenow");
+  uploadProgressBar.style.width = "0%";
+  uploadProgressLabel.hidden = true;
+  uploadProgressLabel.textContent = "";
+  retryUploadButton.hidden = true;
+  updateComposerLayout();
+}
+
+function showAttachmentStatus(message, { tone = "neutral", progress = null, retry = false } = {}) {
+  uploadStatus.textContent = message;
+  attachmentStatus.hidden = false;
+  attachmentStatus.classList.toggle("error", tone === "error");
+  retryUploadButton.hidden = !retry;
+  retryUploadButton.disabled = sending;
+
+  const hasProgress = Number.isFinite(progress);
+  uploadProgress.hidden = !hasProgress;
+  uploadProgressLabel.hidden = !hasProgress;
+  if (hasProgress) {
+    const normalizedProgress = Math.max(0, Math.min(100, Math.round(progress)));
+    uploadProgress.setAttribute("aria-valuenow", String(normalizedProgress));
+    uploadProgressBar.style.width = `${normalizedProgress}%`;
+    uploadProgressLabel.textContent = `${normalizedProgress}%`;
+  }
+  updateComposerLayout();
+}
+
+async function validateReadableFiles(files) {
+  const results = await Promise.all(files.map(async (file) => {
+    try {
+      await file.slice(0, Math.min(file.size, 1)).arrayBuffer();
+      return { file, readable: true };
+    } catch (error) {
+      return { file, readable: false };
+    }
+  }));
+  return {
+    readable: results.filter((result) => result.readable).map((result) => result.file),
+    failed: results.filter((result) => !result.readable).map((result) => result.file),
+  };
+}
+
 function renderPendingFiles() {
   filePreview.replaceChildren();
   const displayNames = uniqueAttachmentNames(pendingFiles);
@@ -471,18 +526,42 @@ function renderPendingFiles() {
   filePreview.hidden = !pendingFiles.length;
 }
 
-function appendPendingFiles(files) {
+async function appendPendingFiles(files) {
   if (sending) return;
   const additions = [...files];
   if (!additions.length) return;
-  const available = Math.max(0, MAX_ATTACHMENTS_PER_MESSAGE - pendingFiles.length);
-  pendingFiles.push(...additions.slice(0, available));
+  const { readable, failed } = await validateReadableFiles(additions);
+  if (sending) return;
+
+  const accepted = [];
+  let totalBytes = pendingFiles.reduce((total, file) => total + file.size, 0);
+  let rejectedByCount = false;
+  let rejectedBySize = false;
+  readable.forEach((file) => {
+    if (pendingFiles.length + accepted.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
+      rejectedByCount = true;
+      return;
+    }
+    if (currentMaxUploadBytes && totalBytes + file.size > currentMaxUploadBytes) {
+      rejectedBySize = true;
+      return;
+    }
+    accepted.push(file);
+    totalBytes += file.size;
+  });
+  pendingFiles.push(...accepted);
   fileInput.value = "";
-  if (additions.length > available) {
-    uploadStatus.hidden = false;
-    uploadStatus.textContent = t("upload.tooMany", { count: MAX_ATTACHMENTS_PER_MESSAGE });
+
+  const issues = [];
+  if (rejectedByCount) issues.push(t("upload.tooMany", { count: MAX_ATTACHMENTS_PER_MESSAGE }));
+  if (rejectedBySize) issues.push(t("upload.tooLarge"));
+  if (failed.length) {
+    issues.push(t("upload.readFailed", { name: failed.map((file) => file.name).join(", ") }));
+  }
+  if (issues.length) {
+    showAttachmentStatus(issues.join(" · "), { tone: "error" });
   } else {
-    uploadStatus.hidden = true;
+    clearAttachmentStatus();
   }
   renderPendingFiles();
   resizeTextarea();
@@ -493,6 +572,7 @@ function removePendingFile(index, force = false) {
   pendingFiles.splice(index, 1);
   renderPendingFiles();
   fileInput.value = "";
+  clearAttachmentStatus();
   updateComposerLayout();
   updateSendButton();
 }
@@ -502,6 +582,7 @@ function clearPendingFiles(force = false) {
   pendingFiles = [];
   renderPendingFiles();
   fileInput.value = "";
+  clearAttachmentStatus();
   updateComposerLayout();
   updateSendButton();
 }
@@ -510,6 +591,7 @@ function setSending(value) {
   sending = value;
   fileInput.disabled = value;
   messageInput.disabled = value;
+  retryUploadButton.disabled = value;
   dropZone.classList.toggle("sending", value);
   renderPendingFiles();
   updateSendButton();
@@ -522,15 +604,14 @@ function uploadCombinedMessage(body, files) {
     files.forEach((file) => form.append("files", file, file.name));
     const request = new XMLHttpRequest();
     request.open("POST", "/api/files");
-    uploadStatus.hidden = false;
     const uploadName = files.length === 1
       ? files[0].name
       : t("upload.fileCount", { count: files.length });
-    uploadStatus.textContent = t("upload.uploading", { name: uploadName });
+    showAttachmentStatus(t("upload.uploading", { name: uploadName }), { progress: 0 });
     request.upload.addEventListener("progress", (event) => {
       if (!event.lengthComputable) return;
       const progress = Math.round((event.loaded / event.total) * 100);
-      uploadStatus.textContent = t("upload.progress", { name: uploadName, progress });
+      showAttachmentStatus(t("upload.uploading", { name: uploadName }), { progress });
     });
     request.addEventListener("load", () => {
       if (request.status >= 200 && request.status < 300) {
@@ -568,7 +649,7 @@ messageForm.addEventListener("submit", async (event) => {
       : await api("/api/messages", { method: "POST", body: JSON.stringify({ body }) });
     appendMessage(message);
     messageInput.value = "";
-    uploadStatus.hidden = true;
+    clearAttachmentStatus();
     if (pendingFiles.length === files.length && files.every((file, index) => pendingFiles[index] === file)) {
       clearPendingFiles(true);
     }
@@ -578,8 +659,10 @@ messageForm.addEventListener("submit", async (event) => {
     if (error.status === 401) {
       showLogin("errors.sessionExpired");
     } else {
-      uploadStatus.hidden = false;
-      uploadStatus.textContent = error.message || t("errors.sendFailed");
+      showAttachmentStatus(error.message || t("errors.sendFailed"), {
+        tone: "error",
+        retry: Boolean(files.length),
+      });
     }
   } finally {
     setSending(false);
@@ -604,6 +687,9 @@ document.addEventListener("keydown", (event) => {
   }
 });
 fileInput.addEventListener("change", () => appendPendingFiles(fileInput.files || []));
+retryUploadButton.addEventListener("click", () => {
+  if (!sending) messageForm.requestSubmit();
+});
 
 for (const eventName of ["dragenter", "dragover", "dragleave", "drop"]) {
   dropZone.addEventListener(eventName, (event) => {
