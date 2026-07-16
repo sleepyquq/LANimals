@@ -4,13 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
   <meta name="theme-color" content="#f6a84b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 100 100'%3E%3Ctext x='50' y='44' text-anchor='middle' dominant-baseline='central' font-size='86'%3E%F0%9F%90%B1%3C/text%3E%3C/svg%3E">
   <title>LANimals</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
   <main class="shell">
     <section id="login-view" class="login-card">
-      <div class="logo" aria-hidden="true">🦦</div>
+      <div class="logo" aria-hidden="true">🐱</div>
       <h1>LANimals</h1>
       <p class="subtitle" data-i18n="app.subtitle"></p>
       <form id="login-form">
@@ -46,6 +47,12 @@
       <div id="messages-scrollbar" class="messages-scrollbar" aria-hidden="true" hidden>
         <div id="messages-scrollbar-thumb" class="messages-scrollbar-thumb"></div>
       </div>
+      <button id="new-messages-button" class="new-messages-button" type="button" hidden>
+        <span id="new-messages-label"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m7 10 5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
 
       <footer id="drop-zone" class="composer">
         <form id="message-form" class="composer-bubble">
@@ -54,6 +61,11 @@
             <div class="attachment-status-row">
               <span id="upload-status"></span>
               <span id="upload-progress-label" class="upload-progress-label" hidden></span>
+              <button id="cancel-upload" class="cancel-upload" type="button" data-i18n-title="upload.cancel" data-i18n-aria-label="upload.cancel" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
               <button id="retry-upload" class="retry-upload" type="button" data-i18n="upload.retry" hidden></button>
             </div>
             <div id="upload-progress" class="attachment-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" hidden>
@@ -84,6 +96,25 @@
       </footer>
     </section>
   </main>
+  <dialog id="media-viewer" class="media-viewer" data-i18n-aria-label="attachment.closePreview">
+    <button id="media-viewer-close" class="media-viewer-close" type="button" data-i18n-title="attachment.closePreview" data-i18n-aria-label="attachment.closePreview">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <button id="media-viewer-previous" class="media-viewer-nav media-viewer-previous" type="button" data-i18n-title="attachment.previousMedia" data-i18n-aria-label="attachment.previousMedia">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <div id="media-viewer-stage" class="media-viewer-stage"></div>
+    <button id="media-viewer-next" class="media-viewer-nav media-viewer-next" type="button" data-i18n-title="attachment.nextMedia" data-i18n-aria-label="attachment.nextMedia">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <span id="media-viewer-position" class="media-viewer-position" role="status" aria-live="polite"></span>
+  </dialog>
   <script src="/static/app.js" defer></script>
 </body>
 </html>

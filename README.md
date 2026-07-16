@@ -30,10 +30,10 @@ cd /path/to/lanimals
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python -m lanimals serve
+python -m lanimals
 ```
 
-第一次启动会在当前主机终端中要求输入并确认群聊密码。密码不回显，`data/config.toml` 只保存 scrypt 哈希。
+终端会打开主机管理菜单，选择“启动聊天室”即可。第一次启动会要求输入并确认群聊密码；密码不回显，`data/config.toml` 只保存 scrypt 哈希。
 
 ## Windows 启动
 
@@ -43,7 +43,7 @@ python -m lanimals serve
 cd C:\path\to\lanimals
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m lanimals serve
+.\.venv\Scripts\python.exe -m lanimals
 ```
 
 首次出现 Windows Defender 防火墙提示时，只允许在**专用网络**中通信，不要为公用网络开放。
@@ -58,7 +58,15 @@ py -3.11 -m venv .venv
 
 ## 主机本地管理
 
-以下命令只能在保存源码和数据的服务主机终端中执行；网页没有对应按钮或删除 API。
+在保存源码和数据的服务主机上运行：
+
+```bash
+python -m lanimals
+```
+
+即可通过编号菜单启动聊天室、修改密码、调整上传上限或清空记录。服务正在运行时，建议另开一个终端进入管理菜单；启动服务的终端继续专门显示日志。网页没有管理按钮或删除 API。
+
+原有子命令继续保留，适合脚本和高级用户直接调用。
 
 ### 修改单文件上传上限
 

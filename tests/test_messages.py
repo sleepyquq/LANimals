@@ -50,6 +50,36 @@ def test_blank_message_is_rejected(tmp_path):
     assert response.status_code == 422
 
 
+def test_message_history_can_page_backward_and_forward_by_id(tmp_path):
+    app = create_app(data_dir=tmp_path, chat_password="shared-secret")
+
+    with TestClient(app) as browser:
+        login(browser)
+        created = [
+            browser.post("/api/messages", json={"body": f"消息 {index}"}).json()
+            for index in range(1, 7)
+        ]
+
+        latest = browser.get("/api/messages", params={"limit": 2})
+        older = browser.get(
+            "/api/messages",
+            params={"limit": 2, "before": created[4]["id"]},
+        )
+        newer = browser.get(
+            "/api/messages",
+            params={"limit": 2, "after": created[1]["id"]},
+        )
+        conflicting = browser.get(
+            "/api/messages",
+            params={"before": created[4]["id"], "after": created[1]["id"]},
+        )
+
+    assert [message["body"] for message in latest.json()] == ["消息 5", "消息 6"]
+    assert [message["body"] for message in older.json()] == ["消息 3", "消息 4"]
+    assert [message["body"] for message in newer.json()] == ["消息 3", "消息 4"]
+    assert conflicting.status_code == 400
+
+
 def test_legacy_messages_are_backfilled_when_sender_name_maps_to_one_identity(tmp_path):
     database = tmp_path / "chat.db"
     registry = DeviceRegistry(database)

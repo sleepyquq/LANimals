@@ -1,6 +1,11 @@
+import asyncio
 import sqlite3
+from concurrent.futures import CancelledError as FutureCancelledError
 
+import pytest
+import httpx
 from fastapi.testclient import TestClient
+from starlette.datastructures import UploadFile
 
 from lanimals.main import create_app
 from lanimals.store import ChatStore
@@ -83,6 +88,37 @@ def test_multiple_files_are_one_atomic_message_and_duplicate_names_are_disambigu
             b"second",
             b"third",
         ]
+
+
+def test_safe_media_can_be_previewed_inline_while_other_files_stay_download_only(tmp_path):
+    app = create_app(data_dir=tmp_path, chat_password="shared-secret", max_upload_bytes=4096)
+
+    with TestClient(app) as browser, TestClient(app) as stranger:
+        login(browser)
+        uploaded = browser.post(
+            "/api/files",
+            files=[
+                ("files", ("照片.png", b"png-content", "image/png")),
+                ("files", ("图标.svg", b"<svg></svg>", "image/svg+xml")),
+                ("files", ("说明.txt", b"text-content", "text/plain")),
+            ],
+        ).json()["attachments"]
+
+        image_preview = browser.get(f"/api/files/{uploaded[0]['id']}/preview")
+        svg_preview = browser.get(f"/api/files/{uploaded[1]['id']}/preview")
+        text_preview = browser.get(f"/api/files/{uploaded[2]['id']}/preview")
+        download = browser.get(f"/api/files/{uploaded[0]['id']}")
+        unauthenticated = stranger.get(f"/api/files/{uploaded[0]['id']}/preview")
+
+    assert image_preview.status_code == 200
+    assert image_preview.content == b"png-content"
+    assert image_preview.headers["content-type"].startswith("image/png")
+    assert image_preview.headers["content-disposition"].startswith("inline;")
+    assert image_preview.headers["x-content-type-options"] == "nosniff"
+    assert svg_preview.status_code == 415
+    assert text_preview.status_code == 415
+    assert download.headers["content-disposition"].startswith("attachment;")
+    assert unauthenticated.status_code == 401
 
 
 def test_more_than_twelve_attachments_are_rejected_without_history_or_orphans(tmp_path):
@@ -170,6 +206,64 @@ def test_file_larger_than_host_limit_is_rejected_without_history_or_orphan(tmp_p
         assert response.status_code == 413
         assert browser.get("/api/messages").json() == []
         assert list((tmp_path / "uploads").glob("*")) == []
+
+
+def test_cancelled_upload_removes_partial_file_and_message(tmp_path, monkeypatch):
+    app = create_app(data_dir=tmp_path, chat_password="shared-secret")
+
+    def cancel_before_commit(*args, **kwargs):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(ChatStore, "create_message_with_attachments", cancel_before_commit)
+    with TestClient(app) as browser:
+        login(browser)
+        with pytest.raises(FutureCancelledError):
+            browser.post(
+                "/api/files",
+                files={"file": ("cancelled.bin", b"content", "application/octet-stream")},
+            )
+
+    assert ChatStore(tmp_path / "chat.db").list_messages() == []
+    assert list((tmp_path / "uploads").glob("*")) == []
+
+
+def test_cancel_endpoint_stops_active_upload_and_cleans_disk(tmp_path, monkeypatch):
+    app = create_app(data_dir=tmp_path, chat_password="shared-secret")
+    original_read = UploadFile.read
+
+    async def scenario() -> None:
+        read_started = asyncio.Event()
+
+        async def slow_read(upload: UploadFile, size: int = -1) -> bytes:
+            read_started.set()
+            await asyncio.sleep(0.1)
+            return await original_read(upload, size)
+
+        monkeypatch.setattr(UploadFile, "read", slow_read)
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as browser:
+            login_response = await browser.post(
+                "/api/login",
+                json={"password": "shared-secret", "incognito": False},
+            )
+            assert login_response.status_code == 200
+            upload = asyncio.create_task(
+                browser.post(
+                    "/api/files",
+                    headers={"X-Upload-ID": "cancel-test-upload"},
+                    files={"file": ("cancelled.bin", b"content", "application/octet-stream")},
+                )
+            )
+            await asyncio.wait_for(read_started.wait(), timeout=1)
+            cancelled = await browser.post("/api/uploads/cancel-test-upload/cancel")
+            response = await upload
+
+        assert cancelled.status_code == 204
+        assert response.status_code == 409
+
+    asyncio.run(scenario())
+    assert ChatStore(tmp_path / "chat.db").list_messages() == []
+    assert list((tmp_path / "uploads").glob("*")) == []
 
 
 def test_grossly_oversized_request_is_rejected_before_multipart_file_processing(tmp_path):

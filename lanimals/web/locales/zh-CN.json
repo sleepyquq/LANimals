@@ -15,7 +15,9 @@
     "temporary": "临时设备",
     "connecting": "连接中",
     "connected": "已连接",
-    "reconnecting": "正在重连"
+    "reconnecting": "正在重连",
+    "newMessages": "{count} 条新消息",
+    "jumpToLatest": "跳到最新消息"
   },
   "empty": {
     "message": "还没有消息，来留下第一个爪印吧。"
@@ -30,6 +32,15 @@
     "expand": "展开输入框",
     "collapse": "收起输入框"
   },
+  "attachment": {
+    "download": "下载 {name}",
+    "viewImage": "查看 {name}",
+    "viewMedia": "查看 {name}",
+    "closePreview": "关闭媒体查看",
+    "previousMedia": "上一个媒体",
+    "nextMedia": "下一个媒体",
+    "imagePosition": "{current} / {total}"
+  },
   "upload": {
     "selected": "已添加 {name}",
     "fileCount": "{count} 个附件",
@@ -41,7 +52,8 @@
     "tooLarge": "附件总大小超过服务器允许的大小",
     "tooMany": "每条消息最多发送 {count} 个附件",
     "readFailed": "无法读取 {name}",
-    "retry": "重试"
+    "retry": "重试",
+    "cancel": "取消上传"
   },
   "errors": {
     "requestFailed": "请求失败（{status}）",

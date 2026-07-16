@@ -24,7 +24,10 @@ from lanimals.network import (
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lanimals", description="LANimals local network chat")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command")
+
+    manage = subparsers.add_parser("manage", help="open the host management menu")
+    manage.add_argument("--data-dir", default="data")
 
     serve = subparsers.add_parser("serve", help="start the LAN chat service")
     serve.add_argument("--data-dir", default="data")
@@ -39,6 +42,43 @@ def _parser() -> argparse.ArgumentParser:
     config.add_argument("--data-dir", default="data")
     config.add_argument("--max-upload-size", required=True, metavar="SIZE")
     return parser
+
+
+def _interactive_menu(data_dir: Path) -> int:
+    """在主机本地提供简单菜单，同时保留原有命令供脚本使用。"""
+    command_args = ["--data-dir", str(data_dir)]
+    while True:
+        print("\n=== LANimals 主机管理 ===")
+        print("1. 启动聊天室")
+        print("2. 修改群聊密码")
+        print("3. 修改上传大小上限")
+        print("4. 清空聊天记录和附件")
+        print("0. 退出")
+        try:
+            choice = input("请选择操作 [0-4]：").strip()
+            if choice == "0":
+                print("已退出 LANimals 主机管理。")
+                return 0
+            if choice == "1":
+                main(["serve", *command_args])
+            elif choice == "2":
+                main(["password", *command_args])
+            elif choice == "3":
+                size = input("请输入上传大小上限（例如 512MB 或 2GB）：").strip()
+                if not size:
+                    print("未输入大小，操作已取消。")
+                    continue
+                main(["config", *command_args, "--max-upload-size", size])
+            elif choice == "4":
+                print("建议先停止正在运行的服务，再清空聊天记录和附件。")
+                main(["clear", *command_args])
+            else:
+                print("无效选项，请输入 0 到 4。")
+        except ValueError as error:
+            print(f"操作失败：{error}")
+        except (EOFError, KeyboardInterrupt):
+            print("\n已退出 LANimals 主机管理。")
+            return 0
 
 
 def _prompt_new_password() -> str:
@@ -81,7 +121,12 @@ def _print_join_information(bind_host: str, port: int, selection, mdns_available
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.command is None:
+        return _interactive_menu(Path("data").resolve())
     data_dir = Path(args.data_dir).expanduser().resolve()
+
+    if args.command == "manage":
+        return _interactive_menu(data_dir)
 
     if args.command == "serve":
         config_path = data_dir / "config.toml"

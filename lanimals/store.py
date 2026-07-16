@@ -131,16 +131,29 @@ class ChatStore:
             ],
         )
 
-    def list_messages(self, *, limit: int = 100, before: int | None = None) -> list[dict[str, object]]:
+    def list_messages(
+        self,
+        *,
+        limit: int = 100,
+        before: int | None = None,
+        after: int | None = None,
+    ) -> list[dict[str, object]]:
         query = "SELECT id, sender_name, sender_id, body, created_at FROM messages"
         parameters: list[object] = []
-        if before is not None:
-            query += " WHERE id < ?"
-            parameters.append(before)
-        query += " ORDER BY id DESC LIMIT ?"
+        if after is not None:
+            query += " WHERE id > ?"
+            parameters.append(after)
+            query += " ORDER BY id ASC LIMIT ?"
+        else:
+            if before is not None:
+                query += " WHERE id < ?"
+                parameters.append(before)
+            query += " ORDER BY id DESC LIMIT ?"
         parameters.append(max(1, min(limit, 200)))
         with self._connect() as connection:
-            message_rows = list(reversed(connection.execute(query, parameters).fetchall()))
+            message_rows = connection.execute(query, parameters).fetchall()
+            if after is None:
+                message_rows = list(reversed(message_rows))
             if not message_rows:
                 return []
             message_ids = [row[0] for row in message_rows]

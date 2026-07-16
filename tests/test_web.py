@@ -56,7 +56,7 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
 
     with TestClient(app) as browser:
         page = browser.get("/").text
-        script = browser.get("/static/app.js").text
+        script = browser.get("/static/app.js").text.replace("\r\n", "\n")
         css = browser.get("/static/app.css").text.replace("\r\n", "\n")
         zh = browser.get("/static/locales/zh-CN.json")
         en = browser.get("/static/locales/en.json")
@@ -69,6 +69,14 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert zh.json()["upload"]["tooMany"]
     assert zh.json()["upload"]["readFailed"]
     assert zh.json()["upload"]["retry"]
+    assert zh.json()["upload"]["cancel"] == "取消上传"
+    assert zh.json()["attachment"]["download"]
+    assert zh.json()["attachment"]["viewImage"] == "查看 {name}"
+    assert zh.json()["attachment"]["closePreview"] == "关闭媒体查看"
+    assert zh.json()["attachment"]["viewMedia"] == "查看 {name}"
+    assert zh.json()["attachment"]["previousMedia"] == "上一个媒体"
+    assert zh.json()["attachment"]["nextMedia"] == "下一个媒体"
+    assert zh.json()["attachment"]["imagePosition"] == "{current} / {total}"
     assert en.json()["composer"]["placeholder"]
     assert en.json()["composer"]["placeholderMobile"] == "Message…"
     assert en.json()["composer"]["expand"]
@@ -76,6 +84,14 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert en.json()["upload"]["tooMany"]
     assert en.json()["upload"]["readFailed"]
     assert en.json()["upload"]["retry"]
+    assert en.json()["upload"]["cancel"] == "Cancel upload"
+    assert en.json()["attachment"]["download"]
+    assert en.json()["attachment"]["viewImage"] == "View {name}"
+    assert en.json()["attachment"]["closePreview"] == "Close media viewer"
+    assert en.json()["attachment"]["viewMedia"] == "View {name}"
+    assert en.json()["attachment"]["previousMedia"] == "Previous media"
+    assert en.json()["attachment"]["nextMedia"] == "Next media"
+    assert en.json()["attachment"]["imagePosition"] == "{current} / {total}"
     assert 'data-i18n="' in page
     assert 'data-i18n-placeholder="composer.placeholder"' in page
     assert 'id="drop-zone"' in page
@@ -85,6 +101,24 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert 'id="upload-progress"' in page
     assert 'id="upload-progress-bar"' in page
     assert 'id="retry-upload"' in page
+    assert 'id="cancel-upload"' in page
+    assert 'id="media-viewer"' in page
+    assert 'id="media-viewer-stage"' in page
+    assert 'id="media-viewer-close"' in page
+    assert 'id="media-viewer-previous"' in page
+    assert 'id="media-viewer-next"' in page
+    assert 'id="media-viewer-position"' in page
+    assert '<div class="logo" aria-hidden="true">🐱</div>' in page
+    assert 'rel="icon"' in page
+    assert "%F0%9F%90%B1" in page
+    assert "x='50' y='44'" in page
+    assert "text-anchor='middle'" in page
+    assert "dominant-baseline='central'" in page
+    assert ".logo {" in css
+    assert "transform: rotate" not in css
+    assert 'data-i18n-aria-label="attachment.closePreview"' in page
+    assert 'data-i18n-title="upload.cancel"' in page
+    assert 'data-i18n-aria-label="upload.cancel"' in page
     assert page.index('id="file-preview"') < page.index('id="attachment-status"') < page.index('id="message-input"')
     assert 'id="remove-file"' not in page
     assert 'id="file-input" type="file" multiple hidden' in page
@@ -92,7 +126,11 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert 'data-i18n-title="composer.expand"' in page
     assert 'id="composer-note"' not in page
     assert "服务器单文件上限" not in page
-    assert "navigator.language" in script
+    assert "function resolveLocale(savedLocale, browserLanguages)" in script
+    assert "navigator.languages" in script
+    assert 'normalized === "zh" || normalized.startsWith("zh-")' in script
+    assert 'normalized === "en" || normalized.startsWith("en-")' in script
+    assert 'return "en";' in script
     assert "syncComposerPlaceholder" in script
     assert 'matchMedia("(max-width: 620px)").matches' in script
     assert '"composer.placeholderMobile"' in script
@@ -115,6 +153,19 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert "showAttachmentStatus" in script
     assert "clearAttachmentStatus" in script
     assert 'retryUploadButton.addEventListener("click"' in script
+    assert 'cancelUploadButton.addEventListener("click"' in script
+    assert "let activeUploadRequest = null;" in script
+    assert "UPLOAD_STATUS_DELAY = 250" in script
+    assert "UPLOAD_STATUS_FADE_DURATION = 150" in script
+    assert "scheduleUploadPresentation" in script
+    assert "fadeUploadPresentation" in script
+    assert "uploadStatusDelayTimer = setTimeout" in script
+    assert "activeUploadRequest.abort();" in script
+    assert 'request.addEventListener("abort"' in script
+    assert "error.cancelled = true;" in script
+    assert ".cancel-upload" in css
+    assert ".attachment-status.is-leaving" in css
+    assert "transition: opacity 150ms ease" in css
     assert "if (sending) return" in script
     assert "loadHistory();" in script
     assert "fetchLocale" in script
@@ -144,7 +195,102 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert ".brand-row { display: flex; align-items: center; gap: 10px; }" in css
     assert 'copy.className = "attachment-copy"' in script
     assert ".attachment-copy { min-width: 0; flex: 1; }" in css
-    assert "max-width: min(680px, calc(100vw - 52px))" in css
+    assert 'const attachment = document.createElement("div");' in script
+    assert 'downloadLink.className = "attachment-download";' in script
+    assert 'downloadLink.href = `/api/files/${encodeURIComponent(item.id)}`;' in script
+    assert 't("attachment.download", { name: item.original_name })' in script
+    assert "attachment.href =" not in script
+    assert ".attachment-download" in css
+    assert "createDownloadIcon" in script
+    assert "function createMediaPreview(item)" in script
+    assert "function applyMediaAspectRatio(media, width, height)" in script
+    assert 'media.addEventListener("load"' in script
+    assert 'media.addEventListener("loadedmetadata"' in script
+    assert 'media.style.setProperty("--media-aspect-ratio"' in script
+    assert "function createViewerMedia(trigger)" in script
+    assert "function openMediaViewer(trigger)" in script
+    assert "function closeMediaViewer()" in script
+    assert "function showMediaViewerItem(index, revealPosition = false)" in script
+    assert "function moveMediaViewer(step)" in script
+    assert "function finishMediaViewerSwipe(event)" in script
+    assert "function shouldStartMediaViewerSwipe(target, clientY)" in script
+    assert "function completeMediaViewerSwipe(deltaX, deltaY)" in script
+    assert "function startMediaViewerTouch(event)" in script
+    assert "function finishMediaViewerTouch(event)" in script
+    assert '`${previewUrl}#t=0.001`' in script
+    assert 'viewerMedia.addEventListener("loadedmetadata"' in script
+    assert "applyMediaAspectRatio(viewerMedia, viewerMedia.videoWidth, viewerMedia.videoHeight);" in script
+    assert 'mediaViewer.addEventListener("touchstart"' in script
+    assert 'mediaViewer.addEventListener("touchend"' in script
+    assert "{ passive: true, capture: true }" in script
+    assert "MEDIA_VIEWER_POSITION_HIDE_DELAY = 1400" in script
+    assert "function revealMediaViewerPosition()" in script
+    assert "function hideMediaViewerPosition()" in script
+    assert 'mediaViewerPosition.classList.add("is-visible")' in script
+    assert 'mediaViewerPosition.classList.remove("is-visible")' in script
+    assert "mediaViewerPositionHideTimer = setTimeout" in script
+    assert 'previewButton.dataset.previewUrl' in script
+    assert 'openButton.className = "attachment-media-open"' in script
+    assert 'openButton.dataset.mediaKind' in script
+    assert 'viewerMedia.controls = true;' in script
+    assert 'mediaViewerStage.replaceChildren(viewerMedia);' in script
+    assert 'mediaViewerPrevious.addEventListener("click"' in script
+    assert 'mediaViewerNext.addEventListener("click"' in script
+    assert 'event.key === "ArrowLeft"' in script
+    assert 'event.key === "ArrowRight"' in script
+    assert 'mediaViewer.addEventListener("pointerdown"' in script
+    assert 'mediaViewer.addEventListener("pointerup"' in script
+    assert "Math.abs(deltaX) < 48" in script
+    assert 'previewButton.className = "attachment-image-button";' in script
+    assert 't("attachment.viewImage", { name: item.original_name })' in script
+    assert 'previewButton.addEventListener("click"' in script
+    assert "mediaViewer.showModal();" in script
+    assert 'mediaViewerClose.addEventListener("click", closeMediaViewer);' in script
+    assert 'mediaViewer.addEventListener("cancel"' in script
+    assert 'event.target === mediaViewer' in script
+    assert 'document.createElement("img")' in script
+    assert 'document.createElement("video")' in script
+    assert 'document.createElement("audio")' in script
+    assert 'const previewUrl = `/api/files/${encodeURIComponent(item.id)}/preview`;' in script
+    assert "media.controls = true;" in script
+    assert 'media.preload = "metadata";' in script
+    assert 'attachment.classList.add("has-preview")' in script
+    assert 'media.addEventListener("error"' in script
+    assert ".attachment-media" in css
+    assert "aspect-ratio: var(--media-aspect-ratio, auto);" in css
+    assert "aspect-ratio: 16 / 10" not in css
+    assert "max-height: min(65vh, 640px);" in css
+    assert ".attachment-image-button" in css
+    assert ".attachment-media-shell" in css
+    assert ".attachment-media-open" in css
+    assert ".media-viewer" in css
+    assert ".media-viewer::backdrop" in css
+    assert ".media-viewer-close" in css
+    assert ".media-viewer-nav" in css
+    assert ".media-viewer-position" in css
+    assert ".media-viewer-media" in css
+    assert "aspect-ratio: var(--media-aspect-ratio, 16 / 9);" in css
+    assert "background: #000;" in css
+    assert "--media-viewer-vertical-gap: max(54px, env(safe-area-inset-top), env(safe-area-inset-bottom));" in css
+    assert "padding: var(--media-viewer-vertical-gap)" in css
+    assert "max-height: calc(100dvh - var(--media-viewer-vertical-gap) - var(--media-viewer-vertical-gap));" in css
+    assert ".media-viewer-position.is-visible" in css
+    assert "transition: opacity 220ms ease, transform 220ms ease;" in css
+    assert "touch-action: pan-y;" in css
+    assert "max-width: calc(100vw - 36px);" in css
+    assert "width: auto;" in css
+    assert "height: auto;" in css
+    assert ".attachment.has-preview" in css
+    assert 'attachment.classList.add("has-time");' in script
+    assert ".attachment.has-time { min-height: 64px; }" in css
+    assert ".attachment.has-time .message-time" in css
+    assert "position: absolute; right: 9px; bottom: 6px;" in css
+    assert ".attachment.has-preview.has-time .message-time { right: 9px; bottom: 7px; }" in css
+    assert ".attachment.has-time { min-height: 78px; }" in css
+    assert 'attachmentList.className = "attachment-list";' in script
+    assert "attachment-columns-" not in script
+    assert "grid-template-columns: minmax(0, 1fr);" in css
+    assert "width: min(420px, calc(100vw - 52px));" in css
     assert ".file-preview { grid-area: file; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));" in css
     assert ".file-preview-card" in css
     assert ".attachment-status { grid-area: status;" in css
@@ -161,6 +307,7 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert "opacity: .68" in css
     assert "transform: translate(2px, 1px)" in css
     assert "updateMessageTimeLayouts" in script
+    assert "const scope = root?.querySelectorAll ? root : messages;" in script
     assert 'classList.add("multiline")' in script
     assert ".bubble.multiline" in css
     assert "padding: 10px 11px 8px 13px" in css
@@ -177,6 +324,32 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert ".messages::-webkit-scrollbar-button:vertical:increment" in css
     assert 'id="messages-scrollbar"' in page
     assert 'id="messages-scrollbar-thumb"' in page
+    assert 'id="new-messages-button"' in page
+    assert 'id="new-messages-label"' in page
+    assert zh.json()["chat"]["newMessages"] == "{count} 条新消息"
+    assert zh.json()["chat"]["jumpToLatest"] == "跳到最新消息"
+    assert en.json()["chat"]["newMessages"] == "{count} new messages"
+    assert en.json()["chat"]["jumpToLatest"] == "Jump to latest message"
+    assert "NEW_MESSAGE_AUTOSCROLL_THRESHOLD" in script
+    assert "HISTORY_PAGE_SIZE = 200" in script
+    assert "HISTORY_LOAD_THRESHOLD = 240" in script
+    assert "let oldestLoadedMessageId = null;" in script
+    assert "let newestLoadedMessageId = null;" in script
+    assert "let hasMoreHistory = true;" in script
+    assert "function loadOlderMessages()" in script
+    assert "function captureHistoryAnchor()" in script
+    assert "function restoreHistoryAnchor(anchor)" in script
+    assert "function appendRenderedMessage(message, previousMessage)" in script
+    assert "appendRenderedMessage(message, previousMessage);" in script
+    assert '`?limit=${HISTORY_PAGE_SIZE}&before=${oldestLoadedMessageId}`' in script
+    assert '`?limit=${HISTORY_PAGE_SIZE}&after=${cursor}`' in script
+    assert "messages.scrollTop <= HISTORY_LOAD_THRESHOLD" in script
+    assert "function isNearLatest()" in script
+    assert "function appendIncomingMessage(message)" in script
+    assert "let unseenMessageCount = 0;" in script
+    assert 'appendIncomingMessage(payload.message);' in script
+    assert 'newMessagesButton.addEventListener("click", scrollToLatest);' in script
+    assert ".new-messages-button" in css
     assert ".messages.scrollbar-active + .messages-scrollbar" in css
     assert ".messages.scrollbar-active" in css
     assert "transition: opacity 280ms ease" in css
@@ -218,8 +391,28 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert 'messages.addEventListener("pointerleave"' in script
     assert 'messages.addEventListener("wheel"' in script
     assert 'messages.addEventListener("scroll"' in script
+    assert 'if (matchMedia("(min-width: 621px)").matches) return;' in script
     assert 'classList.add("scrollbar-active")' in script
     assert 'classList.remove("scrollbar-active")' in script
+    assert 'messagesScrollbarThumb.addEventListener("pointerdown"' in script
+    assert 'messagesScrollbar.addEventListener("pointerdown"' in script
+    assert 'window.addEventListener("pointermove"' in script
+    assert 'window.addEventListener("pointerup"' in script
+    assert 'window.addEventListener("pointercancel"' in script
+    assert "setPointerCapture" in script
+    assert "releasePointerCapture" in script
+    assert ".messages-scrollbar-thumb::before" in css
+    assert "pointer-events: auto" in css
+    assert "cursor: grab" in css
+    assert "cursor: grabbing" in css
+    assert "touch-action: none" in css
+    assert ".messages-scrollbar { opacity: 1; pointer-events: auto; }" in desktop_css
+    assert ".messages-scrollbar-thumb::before { width: 3px;" in desktop_css
+    assert ".messages.scrollbar-active + .messages-scrollbar .messages-scrollbar-thumb::before" in desktop_css
+    assert ".messages-scrollbar:hover .messages-scrollbar-thumb::before" in desktop_css
+    assert ".messages-scrollbar.dragging .messages-scrollbar-thumb::before" in desktop_css
+    assert "width: 8px;" in desktop_css
+    assert "transition: width 180ms ease, right 180ms ease, background 180ms ease;" in desktop_css
     assert "--chat-header-height" in css
     assert ".composer.fullscreen" in css
     assert ".composer-bubble {\n  position: relative;" in css

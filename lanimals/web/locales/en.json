@@ -15,7 +15,9 @@
     "temporary": "temporary device",
     "connecting": "Connecting",
     "connected": "Connected",
-    "reconnecting": "Reconnecting"
+    "reconnecting": "Reconnecting",
+    "newMessages": "{count} new messages",
+    "jumpToLatest": "Jump to latest message"
   },
   "empty": {
     "message": "No messages yet. Leave the first paw print."
@@ -30,6 +32,15 @@
     "expand": "Expand composer",
     "collapse": "Collapse composer"
   },
+  "attachment": {
+    "download": "Download {name}",
+    "viewImage": "View {name}",
+    "viewMedia": "View {name}",
+    "closePreview": "Close media viewer",
+    "previousMedia": "Previous media",
+    "nextMedia": "Next media",
+    "imagePosition": "{current} / {total}"
+  },
   "upload": {
     "selected": "Attached {name}",
     "fileCount": "{count} attachments",
@@ -41,7 +52,8 @@
     "tooLarge": "The attachments exceed the server size limit",
     "tooMany": "Each message can include up to {count} attachments",
     "readFailed": "Could not read {name}",
-    "retry": "Retry"
+    "retry": "Retry",
+    "cancel": "Cancel upload"
   },
   "errors": {
     "requestFailed": "Request failed ({status})",

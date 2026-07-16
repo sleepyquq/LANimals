@@ -5,11 +5,23 @@ let currentLocale = "en";
 let socket = null;
 let reconnectTimer = null;
 let currentIdentityId = null;
+let unseenMessageCount = 0;
+let oldestLoadedMessageId = null;
+let newestLoadedMessageId = null;
+let hasMoreHistory = true;
+let loadingOlderMessages = false;
+let initialHistoryLoaded = false;
 let messageScrollbarHideTimer = null;
 let messageScrollbarPointerNearEdge = false;
+let messageScrollbarDrag = null;
 let pendingFiles = [];
 let currentMaxUploadBytes = null;
 let sending = false;
+let activeUploadRequest = null;
+let activeUploadId = null;
+let uploadStatusDelayTimer = null;
+let uploadStatusVisible = false;
+let latestUploadProgress = 0;
 let dragDepth = 0;
 const messageCache = new Map();
 
@@ -24,6 +36,8 @@ const connectionLabel = document.querySelector("#connection");
 const messages = document.querySelector("#messages");
 const messagesScrollbar = document.querySelector("#messages-scrollbar");
 const messagesScrollbarThumb = document.querySelector("#messages-scrollbar-thumb");
+const newMessagesButton = document.querySelector("#new-messages-button");
+const newMessagesLabel = document.querySelector("#new-messages-label");
 const emptyState = document.querySelector("#empty-state");
 const dropZone = document.querySelector("#drop-zone");
 const chatHeader = document.querySelector(".chat-header");
@@ -37,12 +51,41 @@ const uploadStatus = document.querySelector("#upload-status");
 const uploadProgress = document.querySelector("#upload-progress");
 const uploadProgressBar = document.querySelector("#upload-progress-bar");
 const uploadProgressLabel = document.querySelector("#upload-progress-label");
+const cancelUploadButton = document.querySelector("#cancel-upload");
 const retryUploadButton = document.querySelector("#retry-upload");
 const sendButton = document.querySelector("#send-button");
+const mediaViewer = document.querySelector("#media-viewer");
+const mediaViewerStage = document.querySelector("#media-viewer-stage");
+const mediaViewerClose = document.querySelector("#media-viewer-close");
+const mediaViewerPrevious = document.querySelector("#media-viewer-previous");
+const mediaViewerNext = document.querySelector("#media-viewer-next");
+const mediaViewerPosition = document.querySelector("#media-viewer-position");
+let mediaViewerTrigger = null;
+let mediaViewerIndex = -1;
+let mediaViewerSwipe = null;
+let mediaViewerTouch = null;
+let mediaViewerLastSwipeAt = 0;
+let mediaViewerPositionHideTimer = null;
 
 const MAX_ATTACHMENTS_PER_MESSAGE = 12;
 const MESSAGE_SCROLLBAR_EDGE_ZONE = 18;
 const MESSAGE_SCROLLBAR_HIDE_DELAY = 700;
+const NEW_MESSAGE_AUTOSCROLL_THRESHOLD = 96;
+const HISTORY_PAGE_SIZE = 200;
+const HISTORY_LOAD_THRESHOLD = 240;
+const UPLOAD_STATUS_DELAY = 250;
+const UPLOAD_STATUS_FADE_DURATION = 150;
+const MEDIA_VIEWER_POSITION_HIDE_DELAY = 1400;
+const PREVIEWABLE_IMAGE_TYPES = new Set([
+  "image/avif", "image/bmp", "image/gif", "image/jpeg", "image/jpg", "image/png", "image/webp",
+]);
+const PREVIEWABLE_VIDEO_TYPES = new Set([
+  "video/mp4", "video/ogg", "video/quicktime", "video/webm",
+]);
+const PREVIEWABLE_AUDIO_TYPES = new Set([
+  "audio/aac", "audio/flac", "audio/mp4", "audio/mpeg", "audio/ogg", "audio/wav",
+  "audio/webm", "audio/x-flac", "audio/x-wav",
+]);
 
 function revealMessageScrollbar() {
   clearTimeout(messageScrollbarHideTimer);
@@ -51,13 +94,14 @@ function revealMessageScrollbar() {
 
 function scheduleMessageScrollbarHide(delay = MESSAGE_SCROLLBAR_HIDE_DELAY) {
   clearTimeout(messageScrollbarHideTimer);
-  if (messageScrollbarPointerNearEdge) return;
+  if (messageScrollbarPointerNearEdge || messageScrollbarDrag) return;
   messageScrollbarHideTimer = setTimeout(() => {
     messages.classList.remove("scrollbar-active");
   }, delay);
 }
 
 function pulseMessageScrollbar() {
+  if (matchMedia("(min-width: 621px)").matches) return;
   revealMessageScrollbar();
   scheduleMessageScrollbarHide();
 }
@@ -72,11 +116,42 @@ function syncMessageScrollbar() {
     return;
   }
 
-  const thumbHeight = Math.max(28, viewportHeight * (viewportHeight / contentHeight));
-  const thumbTravel = Math.max(0, viewportHeight - thumbHeight);
+  const trackHeight = messagesScrollbar.clientHeight || viewportHeight;
+  const thumbHeight = Math.min(trackHeight, Math.max(28, trackHeight * (viewportHeight / contentHeight)));
+  const thumbTravel = Math.max(0, trackHeight - thumbHeight);
   const thumbTop = scrollRange ? (messages.scrollTop / scrollRange) * thumbTravel : 0;
   messagesScrollbarThumb.style.height = `${thumbHeight}px`;
   messagesScrollbarThumb.style.transform = `translateY(${thumbTop}px)`;
+}
+
+function scrollMessagesFromScrollbarPointer(clientY, thumbOffset) {
+  const trackBounds = messagesScrollbar.getBoundingClientRect();
+  const thumbHeight = messagesScrollbarThumb.getBoundingClientRect().height;
+  const thumbTravel = Math.max(0, trackBounds.height - thumbHeight);
+  const scrollRange = Math.max(0, messages.scrollHeight - messages.clientHeight);
+  if (!thumbTravel || !scrollRange) return;
+
+  const thumbTop = Math.max(
+    0,
+    Math.min(thumbTravel, clientY - trackBounds.top - thumbOffset),
+  );
+  messages.scrollTop = (thumbTop / thumbTravel) * scrollRange;
+  syncMessageScrollbar();
+}
+
+function finishMessageScrollbarDrag(event) {
+  if (!messageScrollbarDrag || event.pointerId !== messageScrollbarDrag.pointerId) return;
+  if (messagesScrollbarThumb.hasPointerCapture(event.pointerId)) {
+    messagesScrollbarThumb.releasePointerCapture(event.pointerId);
+  }
+  messageScrollbarDrag = null;
+  messagesScrollbar.classList.remove("dragging");
+  const bounds = messages.getBoundingClientRect();
+  messageScrollbarPointerNearEdge = (
+    event.clientX >= bounds.right - MESSAGE_SCROLLBAR_EDGE_ZONE
+    && event.clientX <= bounds.right + 2
+  );
+  scheduleMessageScrollbarHide();
 }
 
 function translation(key) {
@@ -96,10 +171,20 @@ async function fetchLocale(locale) {
   return response.json();
 }
 
+function resolveLocale(savedLocale, browserLanguages) {
+  if (new Set(["zh-CN", "en"]).has(savedLocale)) return savedLocale;
+  for (const language of browserLanguages || []) {
+    const normalized = String(language).trim().toLowerCase();
+    if (normalized === "zh" || normalized.startsWith("zh-")) return "zh-CN";
+    if (normalized === "en" || normalized.startsWith("en-")) return "en";
+  }
+  return "en";
+}
+
 async function loadTranslations() {
   const saved = localStorage.getItem("lanimals-locale");
-  currentLocale = saved || (navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en");
-  if (!new Set(["zh-CN", "en"]).has(currentLocale)) currentLocale = "en";
+  const browserLanguages = navigator.languages?.length ? navigator.languages : [navigator.language];
+  currentLocale = resolveLocale(saved, browserLanguages);
   try {
     translations = await fetchLocale(currentLocale);
   } catch (error) {
@@ -124,6 +209,7 @@ function applyTranslations() {
     element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
   });
   syncComposerPlaceholder();
+  updateNewMessagesButton();
 }
 
 function syncComposerPlaceholder() {
@@ -171,7 +257,22 @@ function showLogin(errorKey = null) {
   requestAnimationFrame(() => passwordInput.focus());
 }
 
+function resetHistoryState() {
+  messageCache.clear();
+  oldestLoadedMessageId = null;
+  newestLoadedMessageId = null;
+  hasMoreHistory = true;
+  loadingOlderMessages = false;
+  initialHistoryLoaded = false;
+  unseenMessageCount = 0;
+  updateNewMessagesButton();
+  emptyState.hidden = false;
+  messages.replaceChildren(emptyState);
+  messages.scrollTop = 0;
+}
+
 async function showChat(identity) {
+  resetHistoryState();
   loginView.hidden = true;
   chatView.hidden = false;
   currentIdentityId = identity.identity_id;
@@ -210,8 +311,241 @@ function createMessageTime(message) {
   return time;
 }
 
-function updateMessageTimeLayouts() {
-  const bubbles = [...messages.querySelectorAll(".bubble")];
+function createDownloadIcon() {
+  const namespace = "http://www.w3.org/2000/svg";
+  const icon = document.createElementNS(namespace, "svg");
+  icon.classList.add("attachment-download-icon");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("aria-hidden", "true");
+
+  const arrow = document.createElementNS(namespace, "path");
+  arrow.setAttribute("d", "M12 3v12m0 0 5-5m-5 5-5-5");
+  const tray = document.createElementNS(namespace, "path");
+  tray.setAttribute("d", "M5 20h14");
+  icon.append(arrow, tray);
+  return icon;
+}
+
+function applyMediaAspectRatio(media, width, height) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+  media.style.setProperty("--media-aspect-ratio", `${width} / ${height}`);
+}
+
+function createMediaPreview(item) {
+  const contentType = String(item.content_type || "").split(";", 1)[0].trim().toLowerCase();
+  let media = null;
+  if (PREVIEWABLE_IMAGE_TYPES.has(contentType)) {
+    media = document.createElement("img");
+    media.alt = item.original_name;
+    media.loading = "lazy";
+    media.decoding = "async";
+    media.className = "attachment-media attachment-image";
+    media.addEventListener("load", () => {
+      applyMediaAspectRatio(media, media.naturalWidth, media.naturalHeight);
+    });
+  } else if (PREVIEWABLE_VIDEO_TYPES.has(contentType)) {
+    media = document.createElement("video");
+    media.controls = true;
+    media.playsInline = true;
+    media.preload = "metadata";
+    media.className = "attachment-media attachment-video";
+    media.setAttribute("aria-label", item.original_name);
+    media.addEventListener("loadedmetadata", () => {
+      applyMediaAspectRatio(media, media.videoWidth, media.videoHeight);
+    });
+  } else if (PREVIEWABLE_AUDIO_TYPES.has(contentType)) {
+    media = document.createElement("audio");
+    media.controls = true;
+    media.preload = "metadata";
+    media.className = "attachment-media attachment-audio";
+    media.setAttribute("aria-label", item.original_name);
+  }
+  if (!media) return null;
+  const previewUrl = `/api/files/${encodeURIComponent(item.id)}/preview`;
+  media.src = media.matches("video") ? `${previewUrl}#t=0.001` : previewUrl;
+  return media;
+}
+
+function createMediaOpenIcon() {
+  const namespace = "http://www.w3.org/2000/svg";
+  const icon = document.createElementNS(namespace, "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(namespace, "path");
+  path.setAttribute("d", "M13 6h5v5M11 18H6v-5");
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linecap", "round");
+  icon.append(path);
+  return icon;
+}
+
+function getMediaViewerItems() {
+  return [...messages.querySelectorAll(".attachment-viewer-trigger")];
+}
+
+function createViewerMedia(trigger) {
+  const kind = trigger.dataset.mediaKind;
+  const viewerMedia = document.createElement(kind === "image" ? "img" : kind);
+  viewerMedia.className = `media-viewer-media media-viewer-${kind}`;
+  if (kind === "image") {
+    viewerMedia.alt = trigger.dataset.mediaName;
+  } else {
+    viewerMedia.controls = true;
+    viewerMedia.preload = kind === "video" ? "auto" : "metadata";
+    viewerMedia.setAttribute("aria-label", trigger.dataset.mediaName);
+    if (kind === "video") {
+      viewerMedia.playsInline = true;
+      viewerMedia.addEventListener("loadedmetadata", () => {
+        applyMediaAspectRatio(viewerMedia, viewerMedia.videoWidth, viewerMedia.videoHeight);
+      });
+    }
+  }
+  const previewUrl = trigger.dataset.previewUrl;
+  viewerMedia.src = kind === "video" ? `${previewUrl}#t=0.001` : previewUrl;
+  return viewerMedia;
+}
+
+function hideMediaViewerPosition() {
+  clearTimeout(mediaViewerPositionHideTimer);
+  mediaViewerPositionHideTimer = null;
+  mediaViewerPosition.classList.remove("is-visible");
+}
+
+function revealMediaViewerPosition() {
+  clearTimeout(mediaViewerPositionHideTimer);
+  mediaViewerPosition.classList.add("is-visible");
+  mediaViewerPositionHideTimer = setTimeout(
+    hideMediaViewerPosition,
+    MEDIA_VIEWER_POSITION_HIDE_DELAY,
+  );
+}
+
+function showMediaViewerItem(index, revealPosition = false) {
+  const items = getMediaViewerItems();
+  if (!items.length) return;
+  const nextIndex = Math.max(0, Math.min(index, items.length - 1));
+  const trigger = items[nextIndex];
+  const viewerMedia = createViewerMedia(trigger);
+  mediaViewerIndex = nextIndex;
+  mediaViewerTrigger = trigger;
+  mediaViewerStage.replaceChildren(viewerMedia);
+  mediaViewerPrevious.disabled = nextIndex === 0;
+  mediaViewerNext.disabled = nextIndex === items.length - 1;
+  mediaViewerPosition.textContent = t("attachment.imagePosition", {
+    current: nextIndex + 1,
+    total: items.length,
+  });
+  if (revealPosition) revealMediaViewerPosition();
+  else hideMediaViewerPosition();
+}
+
+function moveMediaViewer(step) {
+  if (!mediaViewer.open) return;
+  const items = getMediaViewerItems();
+  const nextIndex = Math.max(0, Math.min(mediaViewerIndex + step, items.length - 1));
+  if (nextIndex === mediaViewerIndex) return;
+  showMediaViewerItem(nextIndex, true);
+}
+
+function openMediaViewer(trigger) {
+  const items = getMediaViewerItems();
+  const index = items.indexOf(trigger);
+  if (index < 0) return;
+  showMediaViewerItem(index);
+  document.documentElement.classList.add("media-viewer-open");
+  mediaViewer.showModal();
+}
+
+function closeMediaViewer() {
+  if (mediaViewer.open) mediaViewer.close();
+}
+
+function createImagePreviewButton(item, media) {
+  const previewButton = document.createElement("button");
+  previewButton.type = "button";
+  previewButton.className = "attachment-image-button";
+  previewButton.classList.add("attachment-viewer-trigger");
+  previewButton.dataset.previewUrl = `/api/files/${encodeURIComponent(item.id)}/preview`;
+  previewButton.dataset.mediaName = item.original_name;
+  previewButton.dataset.mediaKind = "image";
+  previewButton.setAttribute("aria-label", t("attachment.viewImage", { name: item.original_name }));
+  previewButton.append(media);
+  previewButton.addEventListener("click", () => openMediaViewer(previewButton));
+  return previewButton;
+}
+
+function createMediaPreviewShell(item, media) {
+  const shell = document.createElement("div");
+  shell.className = `attachment-media-shell${media.matches("audio") ? " is-audio" : ""}`;
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className = "attachment-media-open";
+  openButton.classList.add("attachment-viewer-trigger");
+  openButton.dataset.previewUrl = `/api/files/${encodeURIComponent(item.id)}/preview`;
+  openButton.dataset.mediaName = item.original_name;
+  openButton.dataset.mediaKind = media.matches("video") ? "video" : "audio";
+  const label = t("attachment.viewMedia", { name: item.original_name });
+  openButton.setAttribute("aria-label", label);
+  openButton.title = label;
+  openButton.append(createMediaOpenIcon());
+  openButton.addEventListener("click", () => openMediaViewer(openButton));
+  shell.append(media, openButton);
+  return shell;
+}
+
+function shouldStartMediaViewerSwipe(target, clientY) {
+  const element = target?.closest ? target : target?.parentElement;
+  if (!element || element.closest("button, audio")) return false;
+  const video = element.closest("video");
+  if (!video) return true;
+  const bounds = video.getBoundingClientRect();
+  return clientY < bounds.bottom - Math.min(64, bounds.height * 0.25);
+}
+
+function completeMediaViewerSwipe(deltaX, deltaY) {
+  if (Math.abs(deltaX) < 48 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+  const now = Date.now();
+  if (now - mediaViewerLastSwipeAt < 250) return;
+  mediaViewerLastSwipeAt = now;
+  moveMediaViewer(deltaX < 0 ? 1 : -1);
+}
+
+function finishMediaViewerSwipe(event) {
+  if (!mediaViewerSwipe || event.pointerId !== mediaViewerSwipe.pointerId) return;
+  const deltaX = event.clientX - mediaViewerSwipe.startX;
+  const deltaY = event.clientY - mediaViewerSwipe.startY;
+  mediaViewerSwipe = null;
+  completeMediaViewerSwipe(deltaX, deltaY);
+}
+
+function startMediaViewerTouch(event) {
+  if (event.touches.length !== 1) return;
+  const touch = event.touches[0];
+  if (!shouldStartMediaViewerSwipe(event.target, touch.clientY)) return;
+  mediaViewerTouch = {
+    identifier: touch.identifier,
+    startX: touch.clientX,
+    startY: touch.clientY,
+  };
+}
+
+function finishMediaViewerTouch(event) {
+  if (!mediaViewerTouch) return;
+  const touch = Array.from(event.changedTouches).find(
+    (candidate) => candidate.identifier === mediaViewerTouch.identifier,
+  );
+  if (!touch) return;
+  const deltaX = touch.clientX - mediaViewerTouch.startX;
+  const deltaY = touch.clientY - mediaViewerTouch.startY;
+  mediaViewerTouch = null;
+  completeMediaViewerSwipe(deltaX, deltaY);
+}
+
+function updateMessageTimeLayouts(root = messages) {
+  const scope = root?.querySelectorAll ? root : messages;
+  const bubbles = [...scope.querySelectorAll(".bubble")];
   for (const bubble of bubbles) bubble.classList.remove("multiline");
   for (const bubble of bubbles) {
     const body = bubble.querySelector(".message-body");
@@ -223,38 +557,22 @@ function updateMessageTimeLayouts() {
   }
 }
 
-function renderMessages() {
-  const ordered = [...messageCache.values()].sort((left, right) => left.id - right.id);
-  messages.replaceChildren();
-  if (!ordered.length) {
-    emptyState.hidden = false;
-    messages.append(emptyState);
-    requestAnimationFrame(syncMessageScrollbar);
-    return;
-  }
+function createDateSeparator(message) {
+  const date = new Date(message.created_at);
+  const separator = document.createElement("div");
+  separator.className = "date-separator";
+  const dateLabel = document.createElement("time");
+  dateLabel.dateTime = calendarDayKey(date);
+  dateLabel.textContent = date.toLocaleDateString(currentLocale, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  separator.append(dateLabel);
+  return separator;
+}
 
-  let previousSenderKey = null;
-  let previousDay = null;
-  for (const message of ordered) {
-    const date = new Date(message.created_at);
-    const day = calendarDayKey(date);
-    if (day !== previousDay) {
-      const separator = document.createElement("div");
-      separator.className = "date-separator";
-      const dateLabel = document.createElement("time");
-      dateLabel.dateTime = day;
-      dateLabel.textContent = date.toLocaleDateString(currentLocale, {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-      separator.append(dateLabel);
-      messages.append(separator);
-      previousSenderKey = null;
-    }
-
-    const senderKey = message.sender_id || message.sender_name;
-    const sameSender = previousSenderKey === senderKey;
+function createMessageArticle(message, sameSender) {
     const isSelf = Boolean(message.sender_id) && message.sender_id === currentIdentityId;
     const article = document.createElement("article");
     article.className = sameSender ? "message grouped" : "message";
@@ -287,12 +605,23 @@ function renderMessages() {
       : (message.attachment ? [message.attachment] : []);
     if (attachments.length) {
       const attachmentList = document.createElement("div");
-      attachmentList.className = `attachment-list attachment-columns-${Math.min(attachments.length, 4)}`;
+      attachmentList.className = "attachment-list";
       attachments.forEach((item, index) => {
-        const attachment = document.createElement("a");
+        const attachment = document.createElement("div");
         attachment.className = "attachment";
-        attachment.href = `/api/files/${encodeURIComponent(item.id)}`;
         attachment.innerHTML = '<span class="attachment-icon" aria-hidden="true">📄</span>';
+        const media = createMediaPreview(item);
+        if (media) {
+          attachment.classList.add("has-preview");
+          const previewNode = media.matches("img")
+            ? createImagePreviewButton(item, media)
+            : createMediaPreviewShell(item, media);
+          media.addEventListener("error", () => {
+            previewNode.remove();
+            attachment.classList.remove("has-preview");
+          });
+          attachment.prepend(previewNode);
+        }
         const copy = document.createElement("span");
         copy.className = "attachment-copy";
         const name = document.createElement("strong");
@@ -304,46 +633,246 @@ function renderMessages() {
         copy.append(name, size);
         attachment.append(copy);
         if (!message.body && index === attachments.length - 1) {
+          attachment.classList.add("has-time");
           attachment.append(createMessageTime(message));
         }
+        const downloadLink = document.createElement("a");
+        downloadLink.className = "attachment-download";
+        downloadLink.href = `/api/files/${encodeURIComponent(item.id)}`;
+        downloadLink.download = item.original_name;
+        const downloadLabel = t("attachment.download", { name: item.original_name });
+        downloadLink.setAttribute("aria-label", downloadLabel);
+        downloadLink.title = downloadLabel;
+        downloadLink.append(createDownloadIcon());
+        attachment.append(downloadLink);
         attachmentList.append(attachment);
       });
       content.append(attachmentList);
     }
 
     article.append(content);
-    messages.append(article);
-    previousSenderKey = senderKey;
-    previousDay = day;
+    return article;
+}
+
+function appendRenderedMessage(message, previousMessage) {
+  if (emptyState.parentNode === messages) emptyState.remove();
+  emptyState.hidden = true;
+  const day = calendarDayKey(new Date(message.created_at));
+  const previousDay = previousMessage
+    ? calendarDayKey(new Date(previousMessage.created_at))
+    : null;
+  if (day !== previousDay) messages.append(createDateSeparator(message));
+  const senderKey = message.sender_id || message.sender_name;
+  const previousSenderKey = previousMessage
+    ? (previousMessage.sender_id || previousMessage.sender_name)
+    : null;
+  const sameSender = day === previousDay && senderKey === previousSenderKey;
+  const article = createMessageArticle(message, sameSender);
+  messages.append(article);
+  updateMessageTimeLayouts(article);
+  requestAnimationFrame(syncMessageScrollbar);
+}
+
+function renderMessages() {
+  const ordered = [...messageCache.values()].sort((left, right) => left.id - right.id);
+  messages.replaceChildren();
+  if (!ordered.length) {
+    emptyState.hidden = false;
+    messages.append(emptyState);
+    requestAnimationFrame(syncMessageScrollbar);
+    return;
+  }
+
+  let previousMessage = null;
+  for (const message of ordered) {
+    const day = calendarDayKey(new Date(message.created_at));
+    const previousDay = previousMessage
+      ? calendarDayKey(new Date(previousMessage.created_at))
+      : null;
+    if (day !== previousDay) messages.append(createDateSeparator(message));
+    const senderKey = message.sender_id || message.sender_name;
+    const previousSenderKey = previousMessage
+      ? (previousMessage.sender_id || previousMessage.sender_name)
+      : null;
+    const sameSender = day === previousDay && senderKey === previousSenderKey;
+    messages.append(createMessageArticle(message, sameSender));
+    previousMessage = message;
   }
   updateMessageTimeLayouts();
   requestAnimationFrame(syncMessageScrollbar);
 }
 
 function appendMessage(message) {
-  if (messageCache.has(message.id)) return;
+  if (messageCache.has(message.id)) return false;
+  const previousMessage = newestLoadedMessageId === null
+    ? null
+    : messageCache.get(newestLoadedMessageId);
+  const canAppend = newestLoadedMessageId === null || message.id > newestLoadedMessageId;
   messageCache.set(message.id, message);
-  renderMessages();
+  if (canAppend) {
+    appendRenderedMessage(message, previousMessage);
+    newestLoadedMessageId = message.id;
+    if (oldestLoadedMessageId === null) oldestLoadedMessageId = message.id;
+  } else {
+    syncLoadedMessageBounds();
+    renderMessages();
+  }
+  return true;
+}
+
+function isNearLatest() {
+  const distanceFromLatest = messages.scrollHeight - messages.clientHeight - messages.scrollTop;
+  return distanceFromLatest <= NEW_MESSAGE_AUTOSCROLL_THRESHOLD;
+}
+
+function updateNewMessagesButton() {
+  const hasUnseenMessages = unseenMessageCount > 0;
+  newMessagesButton.hidden = !hasUnseenMessages;
+  if (!hasUnseenMessages) return;
+  newMessagesLabel.textContent = t("chat.newMessages", { count: unseenMessageCount });
+  const actionLabel = t("chat.jumpToLatest");
+  newMessagesButton.title = actionLabel;
+}
+
+function clearUnseenMessages() {
+  if (!unseenMessageCount) return;
+  unseenMessageCount = 0;
+  updateNewMessagesButton();
+}
+
+function appendIncomingMessage(message) {
+  const shouldFollowLatest = isNearLatest();
+  const previousScrollTop = messages.scrollTop;
+  if (!appendMessage(message)) return;
+  if (shouldFollowLatest) {
+    scrollToLatest();
+    return;
+  }
+  messages.scrollTop = previousScrollTop;
+  unseenMessageCount += 1;
+  updateNewMessagesButton();
+  syncMessageScrollbar();
 }
 
 function scrollToLatest() {
   messages.scrollTop = messages.scrollHeight;
+  clearUnseenMessages();
   syncMessageScrollbar();
 }
 
 async function loadHistory() {
-  const collected = [];
-  let before = null;
-  while (true) {
-    const query = before ? `?limit=200&before=${before}` : "?limit=200";
-    const batch = await api(`/api/messages${query}`);
-    collected.unshift(...batch);
-    if (batch.length < 200) break;
-    before = batch[0].id;
+  if (initialHistoryLoaded) {
+    await loadNewerMessages();
+    return;
   }
-  collected.forEach((message) => messageCache.set(message.id, message));
+  const batch = await api(`/api/messages?limit=${HISTORY_PAGE_SIZE}`);
+  batch.forEach((message) => messageCache.set(message.id, message));
+  syncLoadedMessageBounds();
+  hasMoreHistory = batch.length === HISTORY_PAGE_SIZE;
+  initialHistoryLoaded = true;
   renderMessages();
   scrollToLatest();
+}
+
+function syncLoadedMessageBounds() {
+  oldestLoadedMessageId = null;
+  newestLoadedMessageId = null;
+  for (const id of messageCache.keys()) {
+    if (oldestLoadedMessageId === null || id < oldestLoadedMessageId) oldestLoadedMessageId = id;
+    if (newestLoadedMessageId === null || id > newestLoadedMessageId) newestLoadedMessageId = id;
+  }
+}
+
+function captureHistoryAnchor() {
+  const viewportTop = messages.getBoundingClientRect().top + chatHeader.getBoundingClientRect().height;
+  const anchor = [...messages.querySelectorAll(".message")].find(
+    (article) => article.getBoundingClientRect().bottom > viewportTop,
+  );
+  if (!anchor) return null;
+  return {
+    messageId: anchor.dataset.messageId,
+    offsetTop: anchor.getBoundingClientRect().top - viewportTop,
+  };
+}
+
+function restoreHistoryAnchor(anchor) {
+  if (!anchor) return false;
+  const article = messages.querySelector(`[data-message-id="${anchor.messageId}"]`);
+  if (!article) return false;
+  const viewportTop = messages.getBoundingClientRect().top + chatHeader.getBoundingClientRect().height;
+  const nextOffsetTop = article.getBoundingClientRect().top - viewportTop;
+  messages.scrollTop += nextOffsetTop - anchor.offsetTop;
+  return true;
+}
+
+async function loadOlderMessages() {
+  if (!initialHistoryLoaded || loadingOlderMessages || !hasMoreHistory || oldestLoadedMessageId === null) {
+    return;
+  }
+  loadingOlderMessages = true;
+  const anchor = captureHistoryAnchor();
+  const previousScrollTop = messages.scrollTop;
+  const previousScrollHeight = messages.scrollHeight;
+  try {
+    const query = `?limit=${HISTORY_PAGE_SIZE}&before=${oldestLoadedMessageId}`;
+    const batch = await api(`/api/messages${query}`);
+    hasMoreHistory = batch.length === HISTORY_PAGE_SIZE;
+    if (!batch.length) return;
+    batch.forEach((message) => messageCache.set(message.id, message));
+    syncLoadedMessageBounds();
+    renderMessages();
+    messages.scrollTop = previousScrollTop;
+    if (!restoreHistoryAnchor(anchor)) {
+      messages.scrollTop = previousScrollTop + messages.scrollHeight - previousScrollHeight;
+    }
+    syncMessageScrollbar();
+  } finally {
+    loadingOlderMessages = false;
+  }
+}
+
+function maybeLoadOlderMessages() {
+  if (messages.scrollTop <= HISTORY_LOAD_THRESHOLD) {
+    loadOlderMessages().catch((error) => {
+      if (error.status === 401) showLogin("errors.sessionExpired");
+    });
+  }
+}
+
+async function loadNewerMessages() {
+  if (newestLoadedMessageId === null) return;
+  const shouldFollowLatest = isNearLatest();
+  let cursor = newestLoadedMessageId;
+  let addedCount = 0;
+  let requiresRerender = false;
+  while (true) {
+    const query = `?limit=${HISTORY_PAGE_SIZE}&after=${cursor}`;
+    const batch = await api(`/api/messages${query}`);
+    for (const message of batch) {
+      if (messageCache.has(message.id)) continue;
+      if (message.id > newestLoadedMessageId) {
+        appendMessage(message);
+      } else {
+        messageCache.set(message.id, message);
+        requiresRerender = true;
+      }
+      addedCount += 1;
+    }
+    if (batch.length < HISTORY_PAGE_SIZE) break;
+    cursor = batch[batch.length - 1].id;
+  }
+  if (!addedCount) return;
+  if (requiresRerender) {
+    syncLoadedMessageBounds();
+    renderMessages();
+  }
+  if (shouldFollowLatest || isNearLatest()) {
+    scrollToLatest();
+  } else {
+    unseenMessageCount += addedCount;
+    updateNewMessagesButton();
+    syncMessageScrollbar();
+  }
 }
 
 function connectWebSocket() {
@@ -351,16 +880,16 @@ function connectWebSocket() {
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   setConnection("chat.connecting", false);
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  const shouldBackfillOnOpen = initialHistoryLoaded;
   socket = new WebSocket(`${protocol}//${location.host}/ws`);
   socket.onopen = () => {
     setConnection("chat.connected", true);
-    loadHistory().catch(() => {});
+    if (shouldBackfillOnOpen) loadHistory().catch(() => {});
   };
   socket.onmessage = (event) => {
     const payload = JSON.parse(event.data);
     if (payload.type === "message_created") {
-      appendMessage(payload.message);
-      scrollToLatest();
+      appendIncomingMessage(payload.message);
     }
   };
   socket.onclose = (event) => {
@@ -449,22 +978,34 @@ function uniqueAttachmentNames(files) {
 }
 
 function clearAttachmentStatus() {
+  clearTimeout(uploadStatusDelayTimer);
+  uploadStatusDelayTimer = null;
+  uploadStatusVisible = false;
   attachmentStatus.hidden = true;
   attachmentStatus.classList.remove("error");
+  attachmentStatus.classList.remove("is-leaving");
   uploadStatus.textContent = "";
   uploadProgress.hidden = true;
   uploadProgress.removeAttribute("aria-valuenow");
   uploadProgressBar.style.width = "0%";
   uploadProgressLabel.hidden = true;
   uploadProgressLabel.textContent = "";
+  cancelUploadButton.hidden = true;
+  cancelUploadButton.disabled = false;
   retryUploadButton.hidden = true;
   updateComposerLayout();
 }
 
-function showAttachmentStatus(message, { tone = "neutral", progress = null, retry = false } = {}) {
+function showAttachmentStatus(
+  message,
+  { tone = "neutral", progress = null, retry = false, cancellable = false } = {},
+) {
   uploadStatus.textContent = message;
   attachmentStatus.hidden = false;
   attachmentStatus.classList.toggle("error", tone === "error");
+  attachmentStatus.classList.remove("is-leaving");
+  cancelUploadButton.hidden = !cancellable;
+  cancelUploadButton.disabled = !cancellable;
   retryUploadButton.hidden = !retry;
   retryUploadButton.disabled = sending;
 
@@ -478,6 +1019,37 @@ function showAttachmentStatus(message, { tone = "neutral", progress = null, retr
     uploadProgressLabel.textContent = `${normalizedProgress}%`;
   }
   updateComposerLayout();
+}
+
+function scheduleUploadPresentation(request, uploadName) {
+  clearTimeout(uploadStatusDelayTimer);
+  uploadStatusVisible = false;
+  latestUploadProgress = 0;
+  uploadStatusDelayTimer = setTimeout(() => {
+    if (activeUploadRequest !== request) return;
+    uploadStatusVisible = true;
+    showAttachmentStatus(t("upload.uploading", { name: uploadName }), {
+      progress: latestUploadProgress,
+      cancellable: true,
+    });
+  }, UPLOAD_STATUS_DELAY);
+}
+
+function fadeUploadPresentation() {
+  clearTimeout(uploadStatusDelayTimer);
+  uploadStatusDelayTimer = null;
+  if (!uploadStatusVisible || attachmentStatus.hidden) {
+    clearAttachmentStatus();
+    return Promise.resolve();
+  }
+  cancelUploadButton.disabled = true;
+  attachmentStatus.classList.add("is-leaving");
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      clearAttachmentStatus();
+      resolve();
+    }, UPLOAD_STATUS_FADE_DURATION);
+  });
 }
 
 async function validateReadableFiles(files) {
@@ -597,6 +1169,12 @@ function setSending(value) {
   updateSendButton();
 }
 
+function createUploadId() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+}
+
 function uploadCombinedMessage(body, files) {
   return new Promise((resolve, reject) => {
     const form = new FormData();
@@ -604,20 +1182,52 @@ function uploadCombinedMessage(body, files) {
     files.forEach((file) => form.append("files", file, file.name));
     const request = new XMLHttpRequest();
     request.open("POST", "/api/files");
+    const uploadId = createUploadId();
+    request.setRequestHeader("X-Upload-ID", uploadId);
+    request.uploadId = uploadId;
     const uploadName = files.length === 1
       ? files[0].name
       : t("upload.fileCount", { count: files.length });
-    showAttachmentStatus(t("upload.uploading", { name: uploadName }), { progress: 0 });
+    activeUploadRequest = request;
+    activeUploadId = uploadId;
+    scheduleUploadPresentation(request, uploadName);
+
+    const finishRequest = () => {
+      clearTimeout(uploadStatusDelayTimer);
+      uploadStatusDelayTimer = null;
+      if (activeUploadRequest === request) {
+        activeUploadRequest = null;
+        activeUploadId = null;
+      }
+    };
+    const rejectCancelledUpload = () => {
+      finishRequest();
+      const error = new Error("upload-cancelled");
+      error.cancelled = true;
+      fadeUploadPresentation().then(() => reject(error));
+    };
     request.upload.addEventListener("progress", (event) => {
       if (!event.lengthComputable) return;
-      const progress = Math.round((event.loaded / event.total) * 100);
-      showAttachmentStatus(t("upload.uploading", { name: uploadName }), { progress });
+      latestUploadProgress = Math.round((event.loaded / event.total) * 100);
+      if (uploadStatusVisible) {
+        showAttachmentStatus(t("upload.uploading", { name: uploadName }), {
+          progress: latestUploadProgress,
+          cancellable: true,
+        });
+      }
     });
     request.addEventListener("load", () => {
+      if (request.lanimalsCancelled) {
+        rejectCancelledUpload();
+        return;
+      }
       if (request.status >= 200 && request.status < 300) {
         try {
-          resolve(JSON.parse(request.responseText));
+          const message = JSON.parse(request.responseText);
+          finishRequest();
+          fadeUploadPresentation().then(() => resolve(message));
         } catch (error) {
+          finishRequest();
           reject(new Error(t("errors.invalidResponse")));
         }
         return;
@@ -628,10 +1238,22 @@ function uploadCombinedMessage(body, files) {
           : t("upload.failed", { status: request.status }),
       );
       error.status = request.status;
+      finishRequest();
       reject(error);
     });
-    request.addEventListener("error", () => reject(new Error(t("upload.networkError"))));
-    request.send(form);
+    request.addEventListener("error", () => {
+      finishRequest();
+      reject(new Error(t("upload.networkError")));
+    });
+    request.addEventListener("abort", () => {
+      rejectCancelledUpload();
+    });
+    try {
+      request.send(form);
+    } catch (error) {
+      finishRequest();
+      reject(error);
+    }
   });
 }
 
@@ -658,6 +1280,8 @@ messageForm.addEventListener("submit", async (event) => {
   } catch (error) {
     if (error.status === 401) {
       showLogin("errors.sessionExpired");
+    } else if (error.cancelled) {
+      clearAttachmentStatus();
     } else {
       showAttachmentStatus(error.message || t("errors.sendFailed"), {
         tone: "error",
@@ -680,7 +1304,52 @@ messageInput.addEventListener("keydown", (event) => {
 expandComposerButton.addEventListener("click", () => {
   setComposerFullscreen(!dropZone.classList.contains("fullscreen"));
 });
+mediaViewerClose.addEventListener("click", closeMediaViewer);
+mediaViewerPrevious.addEventListener("click", () => moveMediaViewer(-1));
+mediaViewerNext.addEventListener("click", () => moveMediaViewer(1));
+mediaViewer.addEventListener("click", (event) => {
+  if (event.target === mediaViewer) closeMediaViewer();
+});
+mediaViewer.addEventListener("pointerdown", (event) => {
+  if (event.pointerType !== "touch" || !shouldStartMediaViewerSwipe(event.target, event.clientY)) return;
+  mediaViewerSwipe = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY };
+}, true);
+mediaViewer.addEventListener("pointerup", finishMediaViewerSwipe, true);
+mediaViewer.addEventListener("pointercancel", () => {
+  mediaViewerSwipe = null;
+}, true);
+mediaViewer.addEventListener("touchstart", startMediaViewerTouch, { passive: true, capture: true });
+mediaViewer.addEventListener("touchend", finishMediaViewerTouch, { passive: true, capture: true });
+mediaViewer.addEventListener("touchcancel", () => {
+  mediaViewerTouch = null;
+}, { passive: true, capture: true });
+mediaViewer.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeMediaViewer();
+});
+mediaViewer.addEventListener("close", () => {
+  document.documentElement.classList.remove("media-viewer-open");
+  mediaViewerStage.replaceChildren();
+  hideMediaViewerPosition();
+  mediaViewerPosition.textContent = "";
+  mediaViewerIndex = -1;
+  mediaViewerSwipe = null;
+  mediaViewerTouch = null;
+  const trigger = mediaViewerTrigger;
+  mediaViewerTrigger = null;
+  if (trigger?.isConnected) trigger.focus();
+});
 document.addEventListener("keydown", (event) => {
+  if (mediaViewer.open) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      moveMediaViewer(-1);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      moveMediaViewer(1);
+    }
+    return;
+  }
   if (event.key === "Escape" && dropZone.classList.contains("fullscreen")) {
     event.preventDefault();
     setComposerFullscreen(false);
@@ -689,6 +1358,18 @@ document.addEventListener("keydown", (event) => {
 fileInput.addEventListener("change", () => appendPendingFiles(fileInput.files || []));
 retryUploadButton.addEventListener("click", () => {
   if (!sending) messageForm.requestSubmit();
+});
+cancelUploadButton.addEventListener("click", async () => {
+  const request = activeUploadRequest;
+  const uploadId = activeUploadId;
+  if (!request || !uploadId) return;
+  request.lanimalsCancelled = true;
+  cancelUploadButton.disabled = true;
+  try {
+    await fetch(`/api/uploads/${encodeURIComponent(uploadId)}/cancel`, { method: "POST" });
+  } finally {
+    if (activeUploadRequest === request) activeUploadRequest.abort();
+  }
 });
 
 for (const eventName of ["dragenter", "dragover", "dragleave", "drop"]) {
@@ -743,10 +1424,55 @@ messages.addEventListener("pointerleave", () => {
   scheduleMessageScrollbarHide(180);
 });
 messages.addEventListener("wheel", pulseMessageScrollbar, { passive: true });
+messages.addEventListener("wheel", (event) => {
+  if (event.deltaY < 0) maybeLoadOlderMessages();
+}, { passive: true });
 messages.addEventListener("scroll", () => {
   syncMessageScrollbar();
   pulseMessageScrollbar();
+  if (isNearLatest()) clearUnseenMessages();
+  maybeLoadOlderMessages();
 }, { passive: true });
+newMessagesButton.addEventListener("click", scrollToLatest);
+
+messagesScrollbar.addEventListener("pointerenter", (event) => {
+  if (event.pointerType && event.pointerType !== "mouse" && event.pointerType !== "pen") return;
+  messageScrollbarPointerNearEdge = true;
+  revealMessageScrollbar();
+});
+messagesScrollbar.addEventListener("pointerleave", () => {
+  if (messageScrollbarDrag) return;
+  messageScrollbarPointerNearEdge = false;
+  scheduleMessageScrollbarHide(180);
+});
+messagesScrollbar.addEventListener("pointerdown", (event) => {
+  if (event.target === messagesScrollbarThumb || event.button !== 0) return;
+  event.preventDefault();
+  const thumbHeight = messagesScrollbarThumb.getBoundingClientRect().height;
+  scrollMessagesFromScrollbarPointer(event.clientY, thumbHeight / 2);
+  revealMessageScrollbar();
+});
+messagesScrollbarThumb.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const thumbBounds = messagesScrollbarThumb.getBoundingClientRect();
+  messageScrollbarDrag = {
+    pointerId: event.pointerId,
+    thumbOffset: event.clientY - thumbBounds.top,
+  };
+  messageScrollbarPointerNearEdge = true;
+  messagesScrollbar.classList.add("dragging");
+  messagesScrollbarThumb.setPointerCapture(event.pointerId);
+  revealMessageScrollbar();
+});
+window.addEventListener("pointermove", (event) => {
+  if (!messageScrollbarDrag || event.pointerId !== messageScrollbarDrag.pointerId) return;
+  event.preventDefault();
+  scrollMessagesFromScrollbarPointer(event.clientY, messageScrollbarDrag.thumbOffset);
+});
+window.addEventListener("pointerup", finishMessageScrollbarDrag);
+window.addEventListener("pointercancel", finishMessageScrollbarDrag);
 
 function syncVisualViewport() {
   const visualViewport = window.visualViewport;

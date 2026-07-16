@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import os
 import secrets
@@ -9,7 +10,7 @@ import uuid
 from pathlib import Path
 from collections.abc import Callable
 
-from fastapi import Cookie, FastAPI, File, Form, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Cookie, FastAPI, File, Form, Header, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -21,6 +22,30 @@ from lanimals.realtime import RealtimeHub
 from lanimals.store import ChatStore
 
 MAX_ATTACHMENTS_PER_MESSAGE = 12
+INLINE_MEDIA_TYPES = frozenset(
+    {
+        "image/avif",
+        "image/bmp",
+        "image/gif",
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp",
+        "video/mp4",
+        "video/ogg",
+        "video/quicktime",
+        "video/webm",
+        "audio/aac",
+        "audio/flac",
+        "audio/mp4",
+        "audio/mpeg",
+        "audio/ogg",
+        "audio/wav",
+        "audio/webm",
+        "audio/x-flac",
+        "audio/x-wav",
+    }
+)
 
 
 class LoginRequest(BaseModel):
@@ -68,6 +93,7 @@ def create_app(
     registry = DeviceRegistry(data_dir / "chat.db")
     chat_store = ChatStore(data_dir / "chat.db")
     hub = RealtimeHub()
+    active_uploads: dict[str, tuple[str, asyncio.Event]] = {}
     app = FastAPI(title="LANimals", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(
         UploadSizeLimitMiddleware,
@@ -164,20 +190,29 @@ def create_app(
     @app.get("/api/messages")
     def list_messages(
         before: int | None = None,
+        after: int | None = None,
         limit: int = 100,
         lan_session: str | None = Cookie(default=None),
     ):
         require_identity(lan_session)
-        return chat_store.list_messages(before=before, limit=limit)
+        if before is not None and after is not None:
+            raise HTTPException(status_code=400, detail="before 和 after 不能同时使用")
+        return chat_store.list_messages(before=before, after=after, limit=limit)
 
     @app.post("/api/files", status_code=201)
     async def upload_file(
         files: list[UploadFile] = File(default=[]),
         file: UploadFile | None = File(default=None),
         body: str = Form(default=""),
+        upload_id: str | None = Header(default=None, alias="X-Upload-ID"),
         lan_session: str | None = Cookie(default=None),
     ):
         sender_name, _, sender_id = require_identity(lan_session)
+        if upload_id is not None and (
+            not 8 <= len(upload_id) <= 64
+            or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for character in upload_id)
+        ):
+            raise HTTPException(status_code=400, detail="上传标识无效")
         body = body.strip()
         if len(body) > 4000:
             raise HTTPException(status_code=422, detail="消息不能超过 4000 个字符")
@@ -197,6 +232,15 @@ def create_app(
         temporary_paths: list[Path] = []
         final_paths: list[Path] = []
         total_size = 0
+        cancellation = asyncio.Event()
+        if upload_id is not None:
+            if upload_id in active_uploads:
+                raise HTTPException(status_code=409, detail="上传标识正在使用")
+            active_uploads[upload_id] = (sender_id, cancellation)
+
+        def ensure_upload_active() -> None:
+            if cancellation.is_set():
+                raise HTTPException(status_code=409, detail="上传已取消")
 
         try:
             for uploaded, original_name in zip(selected_files, original_names, strict=True):
@@ -208,7 +252,12 @@ def create_app(
                 final_paths.append(final_path)
                 size = 0
                 with temporary_path.open("wb") as destination:
-                    while chunk := await uploaded.read(1024 * 1024):
+                    while True:
+                        ensure_upload_active()
+                        chunk = await uploaded.read(1024 * 1024)
+                        ensure_upload_active()
+                        if not chunk:
+                            break
                         size += len(chunk)
                         total_size += len(chunk)
                         if total_size > max_upload_bytes:
@@ -227,8 +276,10 @@ def create_app(
                     }
                 )
             for temporary_path, final_path in zip(temporary_paths, final_paths, strict=True):
+                ensure_upload_active()
                 os.replace(temporary_path, final_path)
 
+            ensure_upload_active()
             try:
                 message = chat_store.create_message_with_attachments(
                     sender_name=sender_name,
@@ -245,15 +296,27 @@ def create_app(
                 session_is_valid=lambda token: registry.session_identity(token) is not None,
             )
             return message
-        except Exception:
+        except BaseException:
             for final_path in final_paths:
                 final_path.unlink(missing_ok=True)
             raise
         finally:
+            if upload_id is not None:
+                active = active_uploads.get(upload_id)
+                if active is not None and active[1] is cancellation:
+                    active_uploads.pop(upload_id, None)
             for temporary_path in temporary_paths:
                 temporary_path.unlink(missing_ok=True)
             for uploaded in selected_files:
                 await uploaded.close()
+
+    @app.post("/api/uploads/{upload_id}/cancel", status_code=204)
+    async def cancel_upload(upload_id: str, lan_session: str | None = Cookie(default=None)):
+        _, _, sender_id = require_identity(lan_session)
+        active = active_uploads.get(upload_id)
+        if active is not None and hmac.compare_digest(active[0], sender_id):
+            active[1].set()
+        return Response(status_code=204)
 
     @app.get("/api/files/{attachment_id}")
     def download_file(attachment_id: str, lan_session: str | None = Cookie(default=None)):
@@ -268,6 +331,26 @@ def create_app(
             path,
             media_type=str(attachment["content_type"]),
             filename=str(attachment["original_name"]),
+            headers={"X-Content-Type-Options": "nosniff"},
+        )
+
+    @app.get("/api/files/{attachment_id}/preview")
+    def preview_file(attachment_id: str, lan_session: str | None = Cookie(default=None)):
+        require_identity(lan_session)
+        attachment = chat_store.get_attachment(attachment_id)
+        if not attachment:
+            raise HTTPException(status_code=404, detail="文件不存在")
+        content_type = str(attachment["content_type"]).split(";", 1)[0].strip().lower()
+        if content_type not in INLINE_MEDIA_TYPES:
+            raise HTTPException(status_code=415, detail="此附件不支持直接预览")
+        path = uploads_dir / str(attachment["storage_name"])
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="文件已从服务器磁盘移除")
+        return FileResponse(
+            path,
+            media_type=content_type,
+            filename=str(attachment["original_name"]),
+            content_disposition_type="inline",
             headers={"X-Content-Type-Options": "nosniff"},
         )
 

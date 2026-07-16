@@ -100,3 +100,34 @@ def test_clear_command_requires_exact_local_confirmation(tmp_path, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda _prompt: "DELETE ALL")
     assert command.main(["clear", "--data-dir", str(tmp_path)]) == 0
     assert store.list_messages() == []
+
+
+def test_no_command_opens_host_management_menu(monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda _prompt: "0")
+
+    assert command.main([]) == 0
+
+    output = capsys.readouterr().out
+    assert "LANimals 主机管理" in output
+    assert "启动聊天室" in output
+    assert "修改群聊密码" in output
+    assert "清空聊天记录和附件" in output
+
+
+def test_management_menu_reuses_config_and_clear_commands(tmp_path, monkeypatch, capsys):
+    from lanimals.config import create_config, parse_size
+    from lanimals.store import ChatStore
+
+    create_config(tmp_path, password="host-password")
+    store = ChatStore(tmp_path / "chat.db")
+    store.create_message(sender_name="小熊", body="通过菜单清空")
+    answers = iter(["3", "512MB", "4", "DELETE ALL", "0"])
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    assert command.main(["manage", "--data-dir", str(tmp_path)]) == 0
+
+    assert load_config(tmp_path).max_upload_bytes == parse_size("512MB")
+    assert store.list_messages() == []
+    output = capsys.readouterr().out
+    assert "重启服务后生效" in output
+    assert "建议先停止正在运行的服务" in output
