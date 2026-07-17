@@ -50,7 +50,7 @@ These screenshots come from the real application running against a temporary pre
 - **Automatic light and dark themes** — the interface follows `prefers-color-scheme` and falls back to light mode.
 - **English and Simplified Chinese** — the browser language selects the initial interface language, with English as the fallback.
 - **Host-only administration** — password changes, storage limits, and destructive cleanup stay in the local terminal.
-- **No cloud dependency** — no CDN, analytics, telemetry, advertising, or remote storage.
+- **No cloud dependency at runtime** — the application uses no CDN, analytics, telemetry, advertising, or remote storage.
 
 ## How it works
 
@@ -168,7 +168,7 @@ Within that boundary, LANimals keeps several controls explicit:
 - session and identity cookies are opaque and `HttpOnly`;
 - uploads are authenticated and size-checked before multipart parsing;
 - downloads require an authenticated session;
-- password rotation revokes HTTP sessions and connected WebSockets;
+- password rotation invalidates current sessions; connected WebSockets are closed before they can receive a later broadcast;
 - destructive administration is available only from the host terminal;
 - automatic network binding accepts private LAN addresses only.
 
