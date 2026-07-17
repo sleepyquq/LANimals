@@ -1,6 +1,5 @@
 <div align="center">
-  <img src="docs/assets/lanimals-mark.svg" width="104" height="104" alt="LANimals 标志">
-  <h1>LANimals</h1>
+  <h1>🐱 LANimals</h1>
   <p><strong>一台主机，一个房间，连接局域网里的所有设备。</strong></p>
   <p>无需云服务，在手机、平板和电脑之间持续发送消息与文件的轻量浏览器聊天室。</p>
 

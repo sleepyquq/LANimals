@@ -1,6 +1,5 @@
 <div align="center">
-  <img src="docs/assets/lanimals-mark.svg" width="104" height="104" alt="LANimals logo">
-  <h1>LANimals</h1>
+  <h1>🐱 LANimals</h1>
   <p><strong>One host. One room. Every device on your local network.</strong></p>
   <p>A lightweight browser chat for sending messages and files across phones, tablets, and computers without a cloud service.</p>
 
