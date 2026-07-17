@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">LANimals logo</title>
+  <desc id="desc">A warm orange app icon with a simple cat face.</desc>
+  <defs>
+    <linearGradient id="bg" x1="16" y1="12" x2="112" y2="118" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFBE69"/>
+      <stop offset="1" stop-color="#EE8F36"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="34" fill="url(#bg)"/>
+  <path d="M34 52 28 29l24 13c8-3 16-3 24 0l24-13-6 23c7 8 11 18 11 29 0 23-18 35-41 35S23 104 23 81c0-11 4-21 11-29Z" fill="#FFF8ED"/>
+  <path d="m36 40 4 14 10-8-14-6Zm56 0-4 14-10-8 14-6Z" fill="#D98232" opacity=".55"/>
+  <ellipse cx="48" cy="76" rx="4" ry="5" fill="#3A3029"/>
+  <ellipse cx="80" cy="76" rx="4" ry="5" fill="#3A3029"/>
+  <path d="m59 85 5 4 5-4c-2-3-8-3-10 0Z" fill="#EE8F36"/>
+  <path d="M64 89v5m0 0c-4 0-7 2-9 5m9-5c4 0 7 2 9 5M48 88l-17-3m17 8-16 4m48-9 17-3m-17 8 16 4" fill="none" stroke="#6C5B50" stroke-width="3" stroke-linecap="round"/>
+</svg>

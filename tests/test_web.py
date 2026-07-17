@@ -24,6 +24,26 @@ def test_responsive_web_client_is_served_without_external_dependencies(tmp_path)
     assert "@media" in stylesheet.text
 
 
+def test_color_scheme_follows_system_dark_mode_and_falls_back_to_light(tmp_path):
+    app = create_app(data_dir=tmp_path, chat_password="shared-secret")
+
+    with TestClient(app) as browser:
+        page = browser.get("/").text
+        css = browser.get("/static/app.css").text.replace("\r\n", "\n")
+
+    assert '<meta name="theme-color" content="#f6a84b">' in page
+    assert 'media="(prefers-color-scheme: dark)" content="#1f1b18"' in page
+    assert ":root {\n  color-scheme: light;" in css
+    assert "@media (prefers-color-scheme: dark)" in css
+    dark_css = css.split("@media (prefers-color-scheme: dark)", 1)[1]
+    assert "color-scheme: dark;" in dark_css
+    assert "body {" in dark_css
+    assert ".login-card" in dark_css
+    assert ".messages" in dark_css
+    assert ".bubble" in dark_css
+    assert ".composer-bubble" in dark_css
+
+
 def test_mobile_layout_has_safe_areas_touch_targets_and_shrinkable_composer(tmp_path):
     app = create_app(data_dir=tmp_path, chat_password="shared-secret")
 

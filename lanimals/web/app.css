@@ -682,6 +682,88 @@ textarea::-webkit-scrollbar-button:horizontal:increment,
   .send-button { width: 44px; height: 44px; }
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ink: #f3ede7;
+    --muted: #b8ada4;
+    --cream: #171411;
+    --paper: #1e1a17;
+    --orange: #f2a04f;
+    --orange-dark: #d98232;
+    --line: #413831;
+    --green: #69bb8d;
+  }
+
+  body {
+    background: radial-gradient(circle at top, #2c2117, var(--cream) 42%);
+  }
+
+  .login-card {
+    background: rgba(31, 27, 23, .97);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .34);
+  }
+  .logo { background: #503720; }
+  input[type="password"] { color: var(--ink); background: #26211d; }
+  input[type="password"]:focus { box-shadow: 0 0 0 3px rgba(242, 160, 79, .2); }
+  .error { color: #ff9288; }
+
+  .chat {
+    background: var(--paper);
+    box-shadow: 0 18px 60px rgba(0, 0, 0, .32);
+  }
+  .chat-header::after { background: rgba(30, 26, 23, .52); }
+  .status { box-shadow: 0 0 0 3px rgba(105, 187, 141, .16); }
+  .status.offline { background: #777069; box-shadow: 0 0 0 3px rgba(184, 173, 164, .1); }
+  .messages { background: linear-gradient(#201c19, #1b1815); }
+  .date-separator time { background: rgba(72, 62, 54, .78); }
+  .message-meta strong { color: #ddba9a; }
+  .bubble { background: #29241f; }
+  .message.self .bubble { border-color: #735034; background: #3b2b1d; }
+  .message.self .attachment { border-color: #795638; background: #402f21; }
+  .message-time { color: #c1b8b0; }
+
+  .attachment { border-color: #62503f; background: #332a22; }
+  .attachment-download { color: #d8b38f; }
+  .attachment-download:hover { color: #ffc17f; background: rgba(242, 160, 79, .14); }
+  .attachment-media { background: #171411; }
+  .attachment-image-button:hover .attachment-image { filter: brightness(1.04); }
+  .attachment-media-shell.is-audio .attachment-media-open { color: #d8b38f; background: rgba(216, 179, 143, .1); }
+  .attachment-media-shell.is-audio .attachment-media-open:hover { background: rgba(216, 179, 143, .18); }
+
+  .composer::before { background: rgba(23, 20, 17, .36); }
+  .composer-bubble {
+    border-color: #4b4037;
+    background: rgba(38, 33, 29, .98);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, .38), 0 2px 8px rgba(0, 0, 0, .22);
+  }
+  .composer-bubble:focus-within { border-color: #9b6b3c; box-shadow: 0 16px 40px rgba(0, 0, 0, .42), 0 0 0 3px rgba(242, 160, 79, .12); }
+  textarea::placeholder { color: #91877f; }
+  textarea::-webkit-scrollbar-thumb { background: rgba(184, 173, 164, .38); background-clip: padding-box; }
+  textarea::-webkit-scrollbar-thumb:hover { background: rgba(184, 173, 164, .56); background-clip: padding-box; }
+  .messages-scrollbar-thumb::before { background: rgba(184, 173, 164, .4); }
+  .messages-scrollbar.dragging .messages-scrollbar-thumb::before { background: rgba(184, 173, 164, .62); }
+
+  .new-messages-button {
+    border-color: rgba(75, 64, 55, .94);
+    color: #ddc0a3;
+    background: rgba(44, 38, 33, .96);
+    box-shadow: 0 7px 20px rgba(0, 0, 0, .3);
+  }
+  .new-messages-button:hover { color: #ffc17f; background: #342d27; }
+  .add-button { color: #d6b596; }
+  .add-button:hover, .remove-file:hover, .cancel-upload:hover { background: rgba(216, 179, 143, .1); }
+  .send-button:disabled { color: #77716b; background: #47413c; }
+  .file-preview-card { background: #352b22; }
+  .remove-file { color: #c9ad94; }
+  .attachment-status.error { color: #ff9288; }
+  .retry-upload { color: #f0a867; }
+  .retry-upload:hover, .retry-upload:focus-visible { color: #ffc48b; }
+  .cancel-upload { color: #b8ada4; }
+  .cancel-upload:hover { color: #e2d9d1; }
+  .attachment-progress { background: #4a433d; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .composer, .composer-bubble { transition: none; }
   .new-messages-button { transition: none; }
