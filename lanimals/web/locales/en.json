@@ -42,6 +42,8 @@
     "imagePosition": "{current} / {total}"
   },
   "upload": {
+    "pastedImage": "Pasted image",
+    "pastedFile": "Pasted attachment",
     "selected": "Attached {name}",
     "fileCount": "{count} attachments",
     "uploading": "Uploading {name}…",

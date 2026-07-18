@@ -88,6 +88,8 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert zh.json()["composer"]["collapse"]
     assert zh.json()["upload"]["tooMany"]
     assert zh.json()["upload"]["readFailed"]
+    assert zh.json()["upload"]["pastedImage"] == "剪贴板图片"
+    assert zh.json()["upload"]["pastedFile"] == "剪贴板附件"
     assert zh.json()["upload"]["retry"]
     assert zh.json()["upload"]["cancel"] == "取消上传"
     assert zh.json()["attachment"]["download"]
@@ -103,6 +105,8 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert en.json()["composer"]["collapse"]
     assert en.json()["upload"]["tooMany"]
     assert en.json()["upload"]["readFailed"]
+    assert en.json()["upload"]["pastedImage"] == "Pasted image"
+    assert en.json()["upload"]["pastedFile"] == "Pasted attachment"
     assert en.json()["upload"]["retry"]
     assert en.json()["upload"]["cancel"] == "Cancel upload"
     assert en.json()["attachment"]["download"]
@@ -155,6 +159,16 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert 'matchMedia("(max-width: 620px)").matches' in script
     assert '"composer.placeholderMobile"' in script
     assert 'addEventListener("drop"' in script
+    assert 'document.addEventListener("paste"' in script
+    assert "clipboardData" in script
+    assert "createClipboardFile" in script
+    assert "getClipboardFiles" in script
+    assert "clipboardFileExtension" in script
+    assert "clipboardData?.files" in script
+    assert 'type.toLowerCase().startsWith("image/")' in script
+    assert "event.preventDefault()" in script
+    assert 'appendPendingFiles(files)' in script
+    assert "if (chatView.hidden || sending) return;" in script
     assert "resizeTextarea" in script
     assert "setComposerFullscreen" in script
     assert 'aria-expanded' in script

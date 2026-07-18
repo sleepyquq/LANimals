@@ -1067,6 +1067,63 @@ async function validateReadableFiles(files) {
   };
 }
 
+function clipboardFileExtension(type) {
+  const normalizedType = type.toLowerCase();
+  const knownExtensions = {
+    "application/json": "json",
+    "application/octet-stream": "bin",
+    "application/pdf": "pdf",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/x-7z-compressed": "7z",
+    "application/x-rar-compressed": "rar",
+    "application/zip": "zip",
+    "image/jpeg": "jpg",
+    "image/svg+xml": "svg",
+    "text/csv": "csv",
+    "text/plain": "txt",
+  };
+  if (knownExtensions[normalizedType]) return knownExtensions[normalizedType];
+
+  const subtype = normalizedType.split("/", 2)[1]?.split("+", 1)[0] || "";
+  return /^[a-z0-9]{1,16}$/.test(subtype) ? subtype : "bin";
+}
+
+function createClipboardFile(file, index, declaredType = "") {
+  if (!file) return null;
+  if (file.name) return file;
+
+  const type = file.type || declaredType || "application/octet-stream";
+  const label = type.toLowerCase().startsWith("image/")
+    ? t("upload.pastedImage")
+    : t("upload.pastedFile");
+  return new File([file], `${label}-${index + 1}.${clipboardFileExtension(type)}`, {
+    type,
+    lastModified: Date.now(),
+  });
+}
+
+function getClipboardFiles(clipboardData) {
+  const sources = [];
+  const seen = new Set();
+  const add = (file, declaredType = "") => {
+    if (!file) return;
+    const key = [file.name, file.size, file.lastModified, file.type || declaredType].join("\u0000");
+    if (seen.has(key)) return;
+    seen.add(key);
+    sources.push({ file, declaredType });
+  };
+
+  for (const item of clipboardData?.items || []) {
+    if (item.kind === "file") add(item.getAsFile(), item.type);
+  }
+  for (const file of clipboardData?.files || []) add(file);
+  return sources
+    .map(({ file, declaredType }, index) => createClipboardFile(file, index, declaredType))
+    .filter(Boolean);
+}
+
 function renderPendingFiles() {
   filePreview.replaceChildren();
   const displayNames = uniqueAttachmentNames(pendingFiles);
@@ -1295,6 +1352,18 @@ messageForm.addEventListener("submit", async (event) => {
 });
 
 messageInput.addEventListener("input", resizeTextarea);
+document.addEventListener("paste", (event) => {
+  // 附件粘贴不应依赖 textarea 已经获得焦点；只在已登录聊天室中接管文件剪贴板。
+  if (chatView.hidden || sending) return;
+  const files = getClipboardFiles(event.clipboardData);
+  if (!files.length) return;
+
+  // 文件剪贴板可能携带文件路径等文本表示；不让它混入聊天正文。
+  event.preventDefault();
+  void appendPendingFiles(files).then(() => {
+    if (!sending && !chatView.hidden) messageInput.focus();
+  });
+});
 messageInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();

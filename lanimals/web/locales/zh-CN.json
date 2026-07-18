@@ -42,6 +42,8 @@
     "imagePosition": "{current} / {total}"
   },
   "upload": {
+    "pastedImage": "剪贴板图片",
+    "pastedFile": "剪贴板附件",
     "selected": "已添加 {name}",
     "fileCount": "{count} 个附件",
     "uploading": "正在上传 {name}…",
