@@ -101,13 +101,20 @@ function scheduleMessageScrollbarHide(delay = MESSAGE_SCROLLBAR_HIDE_DELAY) {
   }, delay);
 }
 
-function pulseMessageScrollbar() {
-  if (matchMedia("(min-width: 621px)").matches) return;
-  revealMessageScrollbar();
-  scheduleMessageScrollbarHide();
+function hasDesktopMessageScrollbar() {
+  return matchMedia("(min-width: 621px)").matches;
 }
 
 function syncMessageScrollbar() {
+  if (!hasDesktopMessageScrollbar()) {
+    clearTimeout(messageScrollbarHideTimer);
+    messageScrollbarPointerNearEdge = false;
+    messagesScrollbar.hidden = true;
+    messagesScrollbar.classList.remove("dragging");
+    messages.classList.remove("scrollbar-active");
+    return;
+  }
+
   const viewportHeight = messages.clientHeight;
   const contentHeight = messages.scrollHeight;
   const scrollRange = Math.max(0, contentHeight - viewportHeight);
@@ -1486,6 +1493,7 @@ loginForm.addEventListener("submit", async (event) => {
 });
 
 messages.addEventListener("pointermove", (event) => {
+  if (!hasDesktopMessageScrollbar()) return;
   if (event.pointerType && event.pointerType !== "mouse" && event.pointerType !== "pen") return;
   const bounds = messages.getBoundingClientRect();
   const pointerNearEdge = event.clientX >= bounds.right - MESSAGE_SCROLLBAR_EDGE_ZONE;
@@ -1495,16 +1503,15 @@ messages.addEventListener("pointermove", (event) => {
   else scheduleMessageScrollbarHide(180);
 });
 messages.addEventListener("pointerleave", () => {
+  if (!hasDesktopMessageScrollbar()) return;
   messageScrollbarPointerNearEdge = false;
   scheduleMessageScrollbarHide(180);
 });
-messages.addEventListener("wheel", pulseMessageScrollbar, { passive: true });
 messages.addEventListener("wheel", (event) => {
   if (event.deltaY < 0) maybeLoadOlderMessages();
 }, { passive: true });
 messages.addEventListener("scroll", () => {
   syncMessageScrollbar();
-  pulseMessageScrollbar();
   if (isNearLatest()) clearUnseenMessages();
   maybeLoadOlderMessages();
 }, { passive: true });

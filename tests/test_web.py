@@ -135,6 +135,10 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert 'id="media-viewer-next"' in page
     assert 'id="media-viewer-position"' in page
     assert 'id="media-viewer-system-open"' in page
+    assert 'class="media-viewer-system-open-icon"' in page
+    assert 'data-i18n="attachment.openWithSystem"' not in page
+    assert 'data-i18n-title="attachment.openWithSystem"' in page
+    assert 'data-i18n-aria-label="attachment.openWithSystem"' in page
     assert '<div class="logo" aria-hidden="true">🐱</div>' in page
     assert 'rel="icon"' in page
     assert "%F0%9F%90%B1" in page
@@ -308,6 +312,8 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert ".media-viewer-nav" in css
     assert ".media-viewer-position" in css
     assert ".media-viewer-system-open" in css
+    assert ".media-viewer-system-open-icon { width: 21px; height: 21px; }" in css
+    assert "min-width: 44px; min-height: 44px;" in css
     assert ".media-viewer-media" in css
     assert "aspect-ratio: var(--media-aspect-ratio, 16 / 9);" in css
     assert "background: #000;" in css
@@ -396,6 +402,8 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert "scrollbar-width: none" in css
     assert "syncMessageScrollbar" in script
     assert "@media (min-width: 621px)" in css
+    mobile_css = css.split("@media (max-width: 620px)", 1)[1].split("@media", 1)[0]
+    assert ".messages-scrollbar { display: none; }" in mobile_css
     desktop_css = css.split("@media (min-width: 621px)", 1)[1].split("@media", 1)[0]
     assert ".shell { padding: 0; background: var(--cream); }" in desktop_css
     assert "width: 100%;" in desktop_css
@@ -431,7 +439,10 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert 'messages.addEventListener("pointerleave"' in script
     assert 'messages.addEventListener("wheel"' in script
     assert 'messages.addEventListener("scroll"' in script
-    assert 'if (matchMedia("(min-width: 621px)").matches) return;' in script
+    assert "function hasDesktopMessageScrollbar()" in script
+    assert 'return matchMedia("(min-width: 621px)").matches;' in script
+    assert "if (!hasDesktopMessageScrollbar()) {" in script
+    assert "messagesScrollbar.hidden = true;" in script
     assert 'classList.add("scrollbar-active")' in script
     assert 'classList.remove("scrollbar-active")' in script
     assert 'messagesScrollbarThumb.addEventListener("pointerdown"' in script
