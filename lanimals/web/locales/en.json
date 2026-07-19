@@ -39,7 +39,8 @@
     "closePreview": "Close media viewer",
     "previousMedia": "Previous media",
     "nextMedia": "Next media",
-    "imagePosition": "{current} / {total}"
+    "imagePosition": "{current} / {total}",
+    "openWithSystem": "Open with system viewer"
   },
   "upload": {
     "pastedImage": "Pasted image",

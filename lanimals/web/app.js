@@ -60,6 +60,7 @@ const mediaViewerClose = document.querySelector("#media-viewer-close");
 const mediaViewerPrevious = document.querySelector("#media-viewer-previous");
 const mediaViewerNext = document.querySelector("#media-viewer-next");
 const mediaViewerPosition = document.querySelector("#media-viewer-position");
+const mediaViewerSystemOpen = document.querySelector("#media-viewer-system-open");
 let mediaViewerTrigger = null;
 let mediaViewerIndex = -1;
 let mediaViewerSwipe = null;
@@ -433,6 +434,9 @@ function showMediaViewerItem(index, revealPosition = false) {
   mediaViewerStage.replaceChildren(viewerMedia);
   mediaViewerPrevious.disabled = nextIndex === 0;
   mediaViewerNext.disabled = nextIndex === items.length - 1;
+  // 在独立原件页交给 Safari 原生查看和分享，避免视频播放后长按手势被网页查看器干扰。
+  mediaViewerSystemOpen.hidden = !["image", "video"].includes(trigger.dataset.mediaKind);
+  mediaViewerSystemOpen.href = trigger.dataset.previewUrl;
   mediaViewerPosition.textContent = t("attachment.imagePosition", {
     current: nextIndex + 1,
     total: items.length,
@@ -1401,6 +1405,8 @@ mediaViewer.addEventListener("close", () => {
   mediaViewerStage.replaceChildren();
   hideMediaViewerPosition();
   mediaViewerPosition.textContent = "";
+  mediaViewerSystemOpen.hidden = true;
+  mediaViewerSystemOpen.removeAttribute("href");
   mediaViewerIndex = -1;
   mediaViewerSwipe = null;
   mediaViewerTouch = null;

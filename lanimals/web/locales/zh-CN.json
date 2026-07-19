@@ -39,7 +39,8 @@
     "closePreview": "关闭媒体查看",
     "previousMedia": "上一个媒体",
     "nextMedia": "下一个媒体",
-    "imagePosition": "{current} / {total}"
+    "imagePosition": "{current} / {total}",
+    "openWithSystem": "使用系统打开"
   },
   "upload": {
     "pastedImage": "剪贴板图片",

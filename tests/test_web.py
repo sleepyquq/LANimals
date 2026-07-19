@@ -99,6 +99,7 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert zh.json()["attachment"]["previousMedia"] == "上一个媒体"
     assert zh.json()["attachment"]["nextMedia"] == "下一个媒体"
     assert zh.json()["attachment"]["imagePosition"] == "{current} / {total}"
+    assert zh.json()["attachment"]["openWithSystem"] == "使用系统打开"
     assert en.json()["composer"]["placeholder"]
     assert en.json()["composer"]["placeholderMobile"] == "Message…"
     assert en.json()["composer"]["expand"]
@@ -116,6 +117,7 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert en.json()["attachment"]["previousMedia"] == "Previous media"
     assert en.json()["attachment"]["nextMedia"] == "Next media"
     assert en.json()["attachment"]["imagePosition"] == "{current} / {total}"
+    assert en.json()["attachment"]["openWithSystem"] == "Open with system viewer"
     assert 'data-i18n="' in page
     assert 'data-i18n-placeholder="composer.placeholder"' in page
     assert 'id="drop-zone"' in page
@@ -132,6 +134,7 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert 'id="media-viewer-previous"' in page
     assert 'id="media-viewer-next"' in page
     assert 'id="media-viewer-position"' in page
+    assert 'id="media-viewer-system-open"' in page
     assert '<div class="logo" aria-hidden="true">🐱</div>' in page
     assert 'rel="icon"' in page
     assert "%F0%9F%90%B1" in page
@@ -242,6 +245,8 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert 'media.addEventListener("loadedmetadata"' in script
     assert 'media.style.setProperty("--media-aspect-ratio"' in script
     assert "function createViewerMedia(trigger)" in script
+    assert 'mediaViewerSystemOpen.hidden = !["image", "video"].includes(trigger.dataset.mediaKind);' in script
+    assert "mediaViewerSystemOpen.href = trigger.dataset.previewUrl;" in script
     assert "function openMediaViewer(trigger)" in script
     assert "function closeMediaViewer()" in script
     assert "function showMediaViewerItem(index, revealPosition = false)" in script
@@ -302,6 +307,7 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert ".media-viewer-close" in css
     assert ".media-viewer-nav" in css
     assert ".media-viewer-position" in css
+    assert ".media-viewer-system-open" in css
     assert ".media-viewer-media" in css
     assert "aspect-ratio: var(--media-aspect-ratio, 16 / 9);" in css
     assert "background: #000;" in css

@@ -318,6 +318,26 @@ input[type="password"]:focus { border-color: var(--orange); box-shadow: 0 0 0 3p
   transition: opacity 220ms ease, transform 220ms ease;
 }
 .media-viewer-position.is-visible { opacity: 1; transform: translate(-50%, 0); }
+.media-viewer-system-open {
+  position: fixed;
+  z-index: 1;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 999px;
+  color: white;
+  background: rgba(255, 255, 255, .12);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  backdrop-filter: blur(10px);
+}
+.media-viewer-system-open:hover { background: rgba(255, 255, 255, .2); }
+.media-viewer-system-open:focus-visible { outline: 2px solid white; outline-offset: 2px; }
 
 .composer {
   position: absolute;
@@ -649,6 +669,7 @@ textarea::-webkit-scrollbar-button:horizontal:increment,
 
 @media (max-width: 620px) {
   .media-viewer-nav { display: none; }
+  .media-viewer-system-open { min-height: 44px; }
   .attachment-media-open { width: 44px; height: 44px; }
   .attachment-media-shell.is-audio { grid-template-columns: minmax(0, 1fr) 44px; }
   :root { --composer-edge-gap: calc(18px + env(safe-area-inset-bottom)); }
