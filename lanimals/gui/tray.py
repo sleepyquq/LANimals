@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Callable
+from typing import Any, Callable
 
 from PIL import Image
-import pystray
 
 from lanimals.gui.i18n import t
 from lanimals.gui.theme import load_app_icon_image
@@ -35,21 +34,28 @@ class SystemTray:
         self.on_toggle_server = on_toggle_server
         self.on_exit = on_exit
 
-        self._icon: pystray.Icon | None = None
+        self._icon: Any | None = None
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
-        image = create_tray_image(64)
-        menu = pystray.Menu(
-            pystray.MenuItem(t("gui.trayShow"), lambda: self.on_show(), default=True),
-            pystray.MenuItem(t("gui.trayOpen"), lambda: self.on_open_browser()),
-            pystray.MenuItem(t("gui.trayToggle"), lambda: self.on_toggle_server()),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(t("gui.trayExit"), lambda: self.stop_and_exit()),
-        )
-        self._icon = pystray.Icon("lanimals", image, "LANimals", menu)
-        self._thread = threading.Thread(target=self._icon.run, daemon=True, name="lanimals-tray")
-        self._thread.start()
+        """在真正需要托盘时才加载平台后端，缺失时仍保留主窗口可用。"""
+        try:
+            import pystray
+
+            image = create_tray_image(64)
+            menu = pystray.Menu(
+                pystray.MenuItem(t("gui.trayShow"), lambda: self.on_show(), default=True),
+                pystray.MenuItem(t("gui.trayOpen"), lambda: self.on_open_browser()),
+                pystray.MenuItem(t("gui.trayToggle"), lambda: self.on_toggle_server()),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(t("gui.trayExit"), lambda: self.stop_and_exit()),
+            )
+            self._icon = pystray.Icon("lanimals", image, "LANimals", menu)
+            self._thread = threading.Thread(target=self._icon.run, daemon=True, name="lanimals-tray")
+            self._thread.start()
+        except Exception as error:
+            logger.warning("系统托盘不可用，主窗口将继续运行：%s", error)
+            self._icon = None
 
     def stop_and_exit(self) -> None:
         if self._icon:
