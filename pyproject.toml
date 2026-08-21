@@ -15,19 +15,29 @@ dependencies = [
   "uvicorn[standard]>=0.30,<1.0",
   "zeroconf>=0.140,<1.0",
   "python-multipart>=0.0.9,<1.0",
+  "PySide6-Essentials>=6.8,<7",
+  "pillow>=10.0.0",
+  "pystray>=0.19.5",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0,<9.0",
   "httpx>=0.27,<1.0",
+  "pyinstaller>=6.0.0",
 ]
 
 [project.scripts]
 lanimals = "lanimals.__main__:main"
 
 [tool.setuptools.package-data]
-lanimals = ["web/*.html", "web/*.css", "web/*.js", "web/locales/*.json"]
+lanimals = [
+  "web/*.html",
+  "web/*.css",
+  "web/*.js",
+  "web/locales/*.json",
+  "gui/assets/*",
+]
 
 [tool.setuptools.packages.find]
 include = ["lanimals*"]
@@ -36,3 +46,4 @@ exclude = ["data*", "tests*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+norecursedirs = [".venv", "build", "dist", "data", ".git", ".hermes", "*.egg-info"]

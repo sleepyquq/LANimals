@@ -136,6 +136,19 @@ def terminal_qr(url: str) -> str:
     return output.getvalue()
 
 
+def qr_pil_image(url: str, scale: int = 6, border: int = 2) -> "Image.Image":
+    """生成适合 GUI 显示的高清 PIL Image 二维码。"""
+    from PIL import Image
+
+    buf = io.BytesIO()
+    qr = segno.make(url, error="m", micro=False)
+    qr.save(buf, kind="png", scale=scale, border=border, dark="#2d2926", light="#ffffff")
+    buf.seek(0)
+    img = Image.open(buf)
+    img.load()
+    return img
+
+
 def build_mdns_service_info(address: str, port: int) -> ServiceInfo:
     return ServiceInfo(
         "_http._tcp.local.",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import os
+import sys
 from pathlib import Path
 from typing import Sequence
 
@@ -26,7 +27,10 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lanimals", description="LANimals local network chat")
     subparsers = parser.add_subparsers(dest="command")
 
-    manage = subparsers.add_parser("manage", help="open the host management menu")
+    gui = subparsers.add_parser("gui", help="open the native desktop control panel")
+    gui.add_argument("--data-dir", default="data")
+
+    manage = subparsers.add_parser("manage", help="open the host management menu in terminal")
     manage.add_argument("--data-dir", default="data")
 
     serve = subparsers.add_parser("serve", help="start the LAN chat service")
@@ -122,8 +126,16 @@ def _print_join_information(bind_host: str, port: int, selection, mdns_available
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command is None:
+        if getattr(sys, "frozen", False) or os.environ.get("LANIMALS_FORCE_GUI") == "1":
+            from lanimals.gui import run_gui
+            default_data_dir = (Path(sys.executable).parent / "data") if getattr(sys, "frozen", False) else Path("data").resolve()
+            return run_gui(data_dir=default_data_dir)
         return _interactive_menu(Path("data").resolve())
     data_dir = Path(args.data_dir).expanduser().resolve()
+
+    if args.command == "gui":
+        from lanimals.gui import run_gui
+        return run_gui(data_dir=data_dir)
 
     if args.command == "manage":
         return _interactive_menu(data_dir)

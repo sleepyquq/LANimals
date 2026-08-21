@@ -49,7 +49,7 @@ LANimals 在局域网内的一台电脑上运行。其他设备打开浏览器�
 - **客户端只需浏览器**：手机和平板无需安装 App。
 - **自动浅色与深色主题**：界面读取 `prefers-color-scheme`，无法读取时回退为浅色。
 - **简体中文与英文**：首次打开时根据浏览器语言选择界面，不支持的语言回退到英文。
-- **管理操作只在主机上执行**：修改密码、上传上限和清空数据都留在本地终端。
+- **管理操作只在主机上执行**：修改密码、上传上限和清空数据只在本地桌面控制面板或终端执行，浏览器客户端永远没有管理入口。
 - **应用运行时不依赖云服务**：程序运行期间不使用 CDN、统计、遥测、广告或远程存储。
 
 ## 工作方式
@@ -111,6 +111,22 @@ py -3.11 -m venv .venv
 
 同一局域网内的设备打开该地址即可加入。Windows 第一次弹出防火墙提示时，只允许 Python 在**专用网络**中通信。
 
+### 原生桌面控制面板
+
+要打开仅供主机使用的图形控制面板，请运行：
+
+```bash
+.venv/bin/python -m lanimals gui
+```
+
+Windows PowerShell：
+
+```powershell
+.\.venv\Scripts\python.exe -m lanimals gui
+```
+
+桌面端会显示加入二维码，并把局域网访问与网卡选择、上传上限、修改密码和清除数据都保留在主机上。设置会一起保存，并且只重启一次本地服务；清除数据必须在窗口内的确认卡片中精确输入 `DELETE ALL`。
+
 ## 主机管理
 
 在保存数据的电脑上再次运行菜单。
@@ -143,7 +159,23 @@ Windows PowerShell：
 .venv/bin/python -m lanimals clear
 ```
 
-网页端没有删除接口、隐藏管理面板或远程清空按钮。
+网页端没有删除接口、隐藏管理面板或远程清空按钮。桌面控制面板与 CLI 都只能在主机本地运行。
+
+## Windows 应用与发布构建
+
+Windows GUI 可执行文件会直接打开桌面控制面板，并把运行数据保存在可执行文件同级的 `data/` 目录。
+
+本机构建 Windows 便携版：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe scripts\build_app.py --mode onedir
+Compress-Archive -Path dist\LANimals -DestinationPath dist\LANimals-windows-x64.zip -Force
+```
+
+便携版入口为 `dist/LANimals/LANimals.exe`。分发 zip 时不要带入已经存在的 `data/` 目录。
+
+macOS 和 Linux 请在 GitHub Actions 页面手动运行 **Build and Release LANimals**。工作流会在各自的原生 runner 上构建并上传 Windows/macOS/Linux 产物；推送 `v*` 标签时会创建 Release。PyInstaller 的 GUI 产物必须在目标系统构建，不应从 Windows 交叉构建。
 
 ## 数据与备份
 
@@ -185,8 +217,11 @@ lanimals/
 ├── network.py        # 局域网发现、mDNS 与终端二维码
 ├── realtime.py       # WebSocket 广播
 ├── store.py          # SQLite 持久化
+├── gui/              # PySide6 主机本地桌面控制面板
 └── web/              # 原生 HTML、CSS、JavaScript 与语言资源
 
+scripts/              # 图标生成与 PyInstaller 打包脚本
+.github/workflows/    # Windows、macOS、Linux 原生构建矩阵
 tests/                # pytest 测试
 data/                 # 本地运行数据；Git 已忽略
 ```

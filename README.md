@@ -49,7 +49,7 @@ These screenshots come from the real application running against a temporary pre
 - **Browser-only clients** — phones and tablets do not need an app.
 - **Automatic light and dark themes** — the interface follows `prefers-color-scheme` and falls back to light mode.
 - **English and Simplified Chinese** — the browser language selects the initial interface language, with English as the fallback.
-- **Host-only administration** — password changes, storage limits, and destructive cleanup stay in the local terminal.
+- **Host-only administration** — password changes, storage limits, and destructive cleanup stay in the local desktop control panel or terminal, never in a browser client.
 - **No cloud dependency at runtime** — the application uses no CDN, analytics, telemetry, advertising, or remote storage.
 
 ## How it works
@@ -111,6 +111,22 @@ http://192.168.x.x:8787/
 
 Open that address from any device on the same LAN. On Windows, allow Python through the firewall for **private networks only**.
 
+### Native desktop control panel
+
+For a host-local graphical control panel, run:
+
+```bash
+.venv/bin/python -m lanimals gui
+```
+
+On Windows PowerShell, use:
+
+```powershell
+.\.venv\Scripts\python.exe -m lanimals gui
+```
+
+The desktop app shows the join QR code and keeps local administration on the host: LAN access and adapter selection, upload limit, password rotation, and a guarded clear-data action. Settings are saved together and restart the local service once; destructive cleanup requires typing `DELETE ALL` in an in-window confirmation card.
+
 ## Host management
 
 Run the menu again from the machine that stores the data.
@@ -143,7 +159,23 @@ Direct commands are also available. The examples below use the Linux/macOS inter
 .venv/bin/python -m lanimals clear
 ```
 
-The web interface has no delete route, hidden admin panel, or remote cleanup button.
+The web interface has no delete route, hidden admin panel, or remote cleanup button. The desktop control panel and the CLI are host-local only.
+
+## Windows app and release builds
+
+The Windows GUI executable opens the desktop control panel directly and stores its runtime data beside the executable in `data/`.
+
+Build a local Windows portable folder with:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe scripts\build_app.py --mode onedir
+Compress-Archive -Path dist\LANimals -DestinationPath dist\LANimals-windows-x64.zip -Force
+```
+
+The portable app is `dist/LANimals/LANimals.exe`; distribute the zip without adding a pre-existing `data/` directory.
+
+For macOS and Linux, use the **Build and Release LANimals** workflow from the GitHub Actions tab. Its matrix builds the native artifact on each platform, uploads Windows/macOS/Linux artifacts for manual runs, and creates a release when a `v*` tag is pushed. PyInstaller must build on the target OS; do not cross-build those GUI artifacts from Windows.
 
 ## Data and backups
 
@@ -185,8 +217,11 @@ lanimals/
 ├── network.py        # LAN discovery, mDNS, and terminal QR code
 ├── realtime.py       # WebSocket fan-out
 ├── store.py          # SQLite persistence
+├── gui/              # PySide6 host-local desktop control panel
 └── web/              # native HTML, CSS, JavaScript, and locale files
 
+scripts/              # icon generation and PyInstaller build helper
+.github/workflows/    # native Windows, macOS, and Linux build matrix
 tests/                # pytest suite
 data/                 # local runtime data; ignored by Git
 ```
