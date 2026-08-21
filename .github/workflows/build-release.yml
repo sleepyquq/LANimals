@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Windows 托管运行器可能使用旧版标准输出代码页；统一 UTF-8，确保构建日志和子进程稳定。
+  PYTHONUTF8: '1'
+
 jobs:
   build:
     name: Build on ${{ matrix.os }}
@@ -36,6 +40,12 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+
+      - name: Install Linux Qt runtime dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libegl1 libgl1
 
       - name: Install dependencies
         run: |
