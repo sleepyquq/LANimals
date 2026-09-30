@@ -58,6 +58,8 @@ jobs:
 
       - name: Render control panel previews
         if: always()
+        # bash -e：任何一个变体失败都让这一步失败（Windows 默认的 pwsh 不会）。
+        shell: bash
         run: |
           python scripts/gui_preview.py --out previews --lang zh-CN
           python scripts/gui_preview.py --out previews --lang en

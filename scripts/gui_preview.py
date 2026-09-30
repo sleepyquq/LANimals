@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import tempfile
 import time
@@ -68,7 +69,7 @@ def render(out_dir: Path, lang: str, dark: bool, timeout: float) -> list[Path]:
     suffix = f"{lang}-{'dark' if dark else 'light'}"
     saved: list[Path] = []
 
-    with tempfile.TemporaryDirectory(prefix="lanimals-preview-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="lanimals-preview-", ignore_cleanup_errors=True) as temporary:
         window = app_module.LANimalsApp(data_dir=Path(temporary) / "data")
         application = QApplication.instance()
         window.show()
@@ -136,6 +137,12 @@ def render(out_dir: Path, lang: str, dark: bool, timeout: float) -> list[Path]:
             window.close()
             window.deleteLater()
             QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            # 应用把日志写进数据目录；Windows 不允许删除仍被打开的文件，先关闭文件日志。
+            root_logger = logging.getLogger()
+            for handler in list(root_logger.handlers):
+                if isinstance(handler, logging.FileHandler):
+                    handler.close()
+                    root_logger.removeHandler(handler)
     return saved
 
 

@@ -24,17 +24,19 @@ _MONO_FONT_FAMILIES = {
 }
 
 
-def _platform_key(platform: str) -> str:
+def _platform_key(platform: str | None) -> str:
+    # 在调用时读取 sys.platform，而不是在导入时把默认参数固定下来。
+    platform = sys.platform if platform is None else platform
     if platform in ("win32", "darwin"):
         return platform
     return "linux"
 
 
-def ui_font_families(platform: str = sys.platform) -> list[str]:
+def ui_font_families(platform: str | None = None) -> list[str]:
     return list(_UI_FONT_FAMILIES[_platform_key(platform)])
 
 
-def mono_font_families(platform: str = sys.platform) -> list[str]:
+def mono_font_families(platform: str | None = None) -> list[str]:
     return list(_MONO_FONT_FAMILIES[_platform_key(platform)])
 
 
