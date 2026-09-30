@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import json
-import locale
 import logging
 import sys
 from pathlib import Path
@@ -49,12 +48,22 @@ def _detect_system_language() -> str:
             primary_lang = lang_id & 0x3FF
             if primary_lang == 0x04:  # Chinese
                 return "zh-CN"
-        loc, _ = locale.getdefaultlocale()
-        if loc and loc.lower().startswith("zh"):
+        languages = _system_ui_languages()
+        if languages and languages[0].lower().startswith("zh"):
             return "zh-CN"
     except Exception:
         pass
     return "en"
+
+
+def _system_ui_languages() -> list[str]:
+    """按用户偏好顺序返回系统界面语言。
+
+    macOS 从访达启动时通常没有 LANG 环境变量，因此读取系统设置而不是进程 locale。
+    """
+    from PySide6.QtCore import QLocale
+
+    return list(QLocale.system().uiLanguages())
 
 
 def _load_json_file(file_path: Path) -> dict[str, Any]:
@@ -118,3 +127,8 @@ def t(key_path: str, default: str = "", **kwargs: Any) -> str:
         except Exception:
             return result
     return str(result)
+
+
+def button_text(key_path: str, default: str = "", **kwargs: Any) -> str:
+    """供 Qt 按钮使用的翻译文本：转义 &，避免被当作键盘助记符吞掉。"""
+    return t(key_path, default, **kwargs).replace("&", "&&")

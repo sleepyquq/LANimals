@@ -11,13 +11,13 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QTimer, Qt, Signal, Slot
-from PySide6.QtGui import QCloseEvent, QIcon, QShowEvent
+from PySide6.QtGui import QCloseEvent, QColor, QIcon, QPainter, QPaintEvent, QShowEvent
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QVBoxLayout, QWidget
 
 from lanimals.gui.controller import ServerController
 from lanimals.gui.dialogs import ClearDataDialog, InWindowModalOverlay, PasswordDialog
 from lanimals.gui.i18n import t
-from lanimals.gui.qt_theme import QtTheme, current_theme
+from lanimals.gui.qt_theme import WINDOW_CORNER_RADIUS, QtTheme, current_theme, ui_font_families
 from lanimals.gui.single_instance import SingleInstanceLock
 from lanimals.gui.tray import SystemTray
 from lanimals.gui.views import MainView, SettingsView
@@ -25,6 +25,33 @@ from lanimals.gui.widgets import DragRegion, HoverToolButton, PageHost
 
 
 logger = logging.getLogger("lanimals.app")
+
+
+def native_rounded_corners_available() -> bool:
+    """只有 Windows 11（build 22000+）能由 DWM 为无边框窗口裁出原生圆角与阴影。"""
+    if sys.platform != "win32":
+        return False
+    try:
+        return sys.getwindowsversion().build >= 22000
+    except Exception:
+        return False
+
+
+def window_flags_for_platform(platform: str = sys.platform) -> Qt.WindowType:
+    """无边框主窗口标志；macOS 需保留最小化提示，否则 showMinimized() 不会生效。"""
+    flags = Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
+    if platform == "darwin":
+        flags |= Qt.WindowType.WindowMinimizeButtonHint
+    return flags
+
+
+def apply_platform_application_font(application: QApplication) -> None:
+    """非 Windows 平台把平台中文字体设为全局首选，保持系统默认字号。"""
+    if sys.platform == "win32":
+        return
+    font = application.font()
+    font.setFamilies(ui_font_families())
+    application.setFont(font)
 
 
 def _setup_app_logging(data_dir: Path) -> None:
@@ -52,6 +79,7 @@ class LANimalsApp(QMainWindow):
 
     def __init__(self, data_dir: Path | str = "data", instance_lock: SingleInstanceLock | None = None) -> None:
         self._qt_application = QApplication.instance() or QApplication(sys.argv)
+        apply_platform_application_font(self._qt_application)
         super().__init__()
 
         resolved_data_dir = Path(data_dir).expanduser().resolve()
@@ -75,14 +103,24 @@ class LANimalsApp(QMainWindow):
 
         # Qt 在创建时就拥有无边框标志；绝不在运行中修改 Win32 窗口样式。
         self.setWindowTitle("LANimals")
-        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+        self.setWindowFlags(window_flags_for_platform())
         self.setFixedSize(340, 430)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
-        self.setStyleSheet(f"QMainWindow {{ background: {self.theme.background}; }}")
+        # 圆角方案必须在窗口首次显示前确定，运行中不再切换窗口属性。
+        self._native_rounded_corners = native_rounded_corners_available()
+        if self._native_rounded_corners:
+            # Windows 11：不透明窗口 + DWM 原生圆角与阴影。
+            self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+            self.setStyleSheet(f"QMainWindow {{ background: {self.theme.background}; }}")
+        else:
+            # 其他平台：透明顶层窗口，由圆角外壳自行绘制抗锯齿圆角。
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            self.setStyleSheet("QMainWindow { background: transparent; }")
         self._setup_window_icon()
         self._set_windows_app_identity()
 
         self.controller = ServerController(data_dir=resolved_data_dir)
+        # 已有配置时服务会在窗口显示后立即启动；这段时间主页显示“启动中”而不是“已停止”。
+        self._service_starting = self.controller.has_config()
         self.controller.add_status_listener(self._on_server_status_changed)
 
         self._build_ui()
@@ -128,7 +166,7 @@ class LANimalsApp(QMainWindow):
             QFrame#lanimals-shell {{
                 background: {self.theme.background};
                 border: 1px solid {self.theme.card_border};
-                border-radius: 8px;
+                border-radius: {WINDOW_CORNER_RADIUS}px;
             }}
             """
         )
@@ -220,13 +258,34 @@ class LANimalsApp(QMainWindow):
             join_url=self.controller.join_url,
             is_running=self.controller.is_running,
             local_only=self.controller.local_only,
+            starting=self._service_starting and not self.controller.is_running,
         )
+
+    def _start_service(self) -> None:
+        self._service_starting = True
+        self._update_main_view()
+        self.run_controller_action(
+            self.controller.start,
+            on_success=lambda _result: self._on_start_finished(),
+            on_error=self._on_start_failed,
+        )
+
+    def _on_start_finished(self) -> None:
+        self._service_starting = False
+        self._update_main_view()
+
+    def _on_start_failed(self, error: Exception) -> None:
+        logger.warning("启动后台服务失败: %s", error)
+        self._service_starting = False
+        self._update_main_view()
 
     def _check_first_launch_and_start(self) -> None:
         if not self.controller.has_config():
+            self._service_starting = False
+            self._update_main_view()
             self._show_initial_password_dialog()
             return
-        self.run_controller_action(self.controller.start)
+        self._start_service()
 
     def _present_modal(self, card: QWidget) -> InWindowModalOverlay:
         """在当前主窗口内显示卡片，不创建额外的原生窗口。"""
@@ -272,7 +331,7 @@ class LANimalsApp(QMainWindow):
 
     def _start_after_initial_password(self, overlay: InWindowModalOverlay) -> None:
         self._dismiss_modal(overlay)
-        self.run_controller_action(self.controller.start)
+        self._start_service()
 
     def show_change_password_dialog(self) -> None:
         """从设置页打开主窗口内的改密码卡片。"""
@@ -397,8 +456,11 @@ class LANimalsApp(QMainWindow):
         self.showMinimized()
 
     def hide_to_tray(self) -> None:
-        """关闭按钮只隐藏至托盘，不暴露远程管理操作。"""
-        self.hide()
+        """关闭按钮只隐藏至托盘，不暴露远程管理操作；没有托盘时改为最小化，避免窗口无处可找。"""
+        if self.tray.available:
+            self.hide()
+        else:
+            self.showMinimized()
 
     def _tray_open_browser(self) -> None:
         self.open_browser_requested.emit()
@@ -416,7 +478,7 @@ class LANimalsApp(QMainWindow):
         if self.controller.is_running:
             self.run_controller_action(self.controller.stop)
         else:
-            self.run_controller_action(self.controller.start)
+            self._start_service()
 
     def quit_app(self) -> None:
         self.quit_requested.emit()
@@ -449,6 +511,15 @@ class LANimalsApp(QMainWindow):
         event.ignore()
         self.hide_to_tray()
 
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802 - Qt API 命名
+        if not self._native_rounded_corners:
+            return
+        # WA_OpaquePaintEvent 要求自行铺满整个窗口；否则外壳圆角外侧会残留未初始化像素，
+        # 这些像素随后由 DWM 圆角裁掉。
+        painter = QPainter(self)
+        painter.fillRect(event.rect(), QColor(self.theme.background))
+        painter.end()
+
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 - Qt API 命名
         super().showEvent(event)
         if not self._dwm_configured:
@@ -457,7 +528,7 @@ class LANimalsApp(QMainWindow):
 
     def _configure_windows_dwm(self) -> None:
         """仅请求 Windows 11 原生圆角/深色适配，不触碰窗口边框样式。"""
-        if sys.platform != "win32":
+        if not self._native_rounded_corners:
             return
         try:
             import ctypes

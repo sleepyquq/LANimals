@@ -2,10 +2,64 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QFont, QGuiApplication
+
+# 主窗口外壳圆角；无原生圆角的平台由窗口自身按该半径绘制并裁剪遮罩。
+WINDOW_CORNER_RADIUS = 8
+
+# 每个平台优先使用系统自带的中文界面字体，其后是同平台的常见回退。
+_UI_FONT_FAMILIES = {
+    "win32": ("Microsoft YaHei UI", "Segoe UI"),
+    "darwin": ("PingFang SC", "Hiragino Sans GB", "Helvetica Neue"),
+    "linux": ("Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", "Noto Sans", "DejaVu Sans"),
+}
+_MONO_FONT_FAMILIES = {
+    "win32": ("Consolas", "Cascadia Mono", "Courier New"),
+    "darwin": ("Menlo", "SF Mono", "Monaco"),
+    "linux": ("DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono", "monospace"),
+}
+
+
+def _platform_key(platform: str | None) -> str:
+    # 在调用时读取 sys.platform，而不是在导入时把默认参数固定下来。
+    platform = sys.platform if platform is None else platform
+    if platform in ("win32", "darwin"):
+        return platform
+    return "linux"
+
+
+def ui_font_families(platform: str | None = None) -> list[str]:
+    return list(_UI_FONT_FAMILIES[_platform_key(platform)])
+
+
+def mono_font_families(platform: str | None = None) -> list[str]:
+    return list(_MONO_FONT_FAMILIES[_platform_key(platform)])
+
+
+def ui_font(point_size: int, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
+    """当前平台的界面字体；缺失时由 Qt 依次回退，而不是直接落到默认字体。"""
+    font = QFont()
+    font.setFamilies(ui_font_families())
+    font.setPointSize(point_size)
+    font.setWeight(weight)
+    return font
+
+
+def mono_font(point_size: int) -> QFont:
+    font = QFont()
+    font.setFamilies(mono_font_families())
+    font.setStyleHint(QFont.StyleHint.Monospace)
+    font.setPointSize(point_size)
+    return font
+
+
+def ui_font_css() -> str:
+    """供样式表 font-family 使用的同一组平台字体。"""
+    return ", ".join(f"'{family}'" for family in ui_font_families())
 
 
 @dataclass(frozen=True)

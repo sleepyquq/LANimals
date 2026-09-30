@@ -35,8 +35,10 @@ def test_settings_field_labels_use_a_compact_shared_text_style() -> None:
     source = _source("lanimals/gui/views.py")
 
     assert "def _settings_field_label(" in source
-    assert 'QFont("Microsoft YaHei UI", 10, QFont.Weight.Medium)' in source
-    assert source.count("_settings_field_label(") >= 4
+    assert "ui_font(10, QFont.Weight.Medium)" in source
+    # 所有设置行都经由 _add_row 使用同一个字段标签样式。
+    assert "row_layout.addWidget(_settings_field_label(label_text" in source
+    assert source.count("self._add_row(") >= 3
 
 
 def test_settings_header_and_window_controls_use_shared_hover_widget() -> None:

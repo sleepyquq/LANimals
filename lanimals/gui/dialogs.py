@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsBlurEffect,
@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from lanimals.gui.i18n import t
-from lanimals.gui.qt_theme import QtTheme
+from lanimals.gui.i18n import button_text, t
+from lanimals.gui.qt_theme import WINDOW_CORNER_RADIUS, QtTheme, ui_font
 
 
 def _button_style(theme: QtTheme, background: str, hover: str, text_color: str) -> str:
@@ -92,8 +92,12 @@ class InWindowModalOverlay(QWidget):
 
     def paintEvent(self, _event) -> None:  # noqa: N802 - Qt API 命名
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         scrim = QColor(10, 8, 6, 104) if self._theme.is_dark else QColor(76, 58, 41, 66)
-        painter.fillRect(self.rect(), scrim)
+        # 遮罩跟随窗口外壳圆角，透明窗口的四角不会出现方形暗角。
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), WINDOW_CORNER_RADIUS, WINDOW_CORNER_RADIUS)
+        painter.fillPath(path, scrim)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt API 命名
         # 吞掉遮罩上的点击，使背景控件保持真正的模态状态。
@@ -136,7 +140,9 @@ class _BaseCard(QFrame):
 
     def _title(self, text: str) -> QLabel:
         label = QLabel(text, self)
-        label.setFont(QFont("Microsoft YaHei UI", 14, QFont.Weight.DemiBold))
+        label.setFont(ui_font(14, QFont.Weight.DemiBold))
+        label.setWordWrap(True)
+        self.title_label = label
         return label
 
 
@@ -177,10 +183,10 @@ class PasswordDialog(_BaseCard):
 
         actions = QHBoxLayout()
         actions.setSpacing(8)
-        self.cancel_button = QPushButton(t("gui.cancel"), self)
+        self.cancel_button = QPushButton(button_text("gui.cancel"), self)
         self.cancel_button.setStyleSheet(_button_style(theme, theme.secondary_button, theme.secondary_hover, theme.secondary_text))
         self.cancel_button.clicked.connect(self.cancelled.emit)
-        self.confirm_button = QPushButton(t("gui.confirm"), self)
+        self.confirm_button = QPushButton(button_text("gui.confirm"), self)
         self.confirm_button.setStyleSheet(_button_style(theme, theme.accent, theme.accent_hover, "#ffffff"))
         self.confirm_button.clicked.connect(self._submit)
         actions.addWidget(self.cancel_button)
@@ -246,12 +252,12 @@ class ClearDataDialog(_BaseCard):
 
         actions = QHBoxLayout()
         actions.setSpacing(8)
-        self.cancel_button = QPushButton(t("gui.cancel"), self)
+        self.cancel_button = QPushButton(button_text("gui.cancel"), self)
         self.cancel_button.setStyleSheet(
             _button_style(theme, theme.secondary_button, theme.secondary_hover, theme.secondary_text)
         )
         self.cancel_button.clicked.connect(self.cancelled.emit)
-        self.confirm_button = QPushButton(t("gui.confirm"), self)
+        self.confirm_button = QPushButton(button_text("gui.confirm"), self)
         self.confirm_button.setStyleSheet(_button_style(theme, theme.danger, theme.danger_hover, "#ffffff"))
         self.confirm_button.clicked.connect(self._submit)
         actions.addWidget(self.cancel_button)

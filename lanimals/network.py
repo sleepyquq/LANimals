@@ -6,10 +6,13 @@ import io
 import ipaddress
 import socket
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import psutil
-import segno
-from zeroconf import IPVersion, ServiceInfo, Zeroconf
+
+# zeroconf 与 segno 只在启动广播、生成二维码时才加载，避免拖慢桌面窗口出现。
+if TYPE_CHECKING:
+    from zeroconf import ServiceInfo, Zeroconf
 
 _VIRTUAL_ADAPTER_HINTS = (
     "vpn",
@@ -131,6 +134,8 @@ def discover_lan_ipv4() -> LanSelection:
 def terminal_qr(url: str) -> str:
     """生成适合 PowerShell、Windows Terminal 和类 Unix 终端的紧凑二维码。"""
 
+    import segno
+
     output = io.StringIO()
     segno.make(url, error="m", micro=False).terminal(out=output, compact=True, border=2)
     return output.getvalue()
@@ -138,6 +143,7 @@ def terminal_qr(url: str) -> str:
 
 def qr_pil_image(url: str, scale: int = 6, border: int = 2) -> "Image.Image":
     """生成适合 GUI 显示的高清 PIL Image 二维码。"""
+    import segno
     from PIL import Image
 
     buf = io.BytesIO()
@@ -150,6 +156,8 @@ def qr_pil_image(url: str, scale: int = 6, border: int = 2) -> "Image.Image":
 
 
 def build_mdns_service_info(address: str, port: int) -> ServiceInfo:
+    from zeroconf import ServiceInfo
+
     return ServiceInfo(
         "_http._tcp.local.",
         "LANimals._http._tcp.local.",
@@ -183,6 +191,8 @@ class MdnsAdvertisement:
 
 
 def advertise_mdns(address: str, port: int) -> MdnsAdvertisement:
+    from zeroconf import IPVersion, Zeroconf
+
     zeroconf = Zeroconf(interfaces=[address], ip_version=IPVersion.V4Only)
     info = build_mdns_service_info(address, port)
     try:

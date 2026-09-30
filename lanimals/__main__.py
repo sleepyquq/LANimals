@@ -9,11 +9,8 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-import uvicorn
-
 from lanimals.cli import change_password, clear_data
 from lanimals.config import create_config, load_config, update_max_upload_size
-from lanimals.main import create_app
 from lanimals.network import (
     advertise_mdns,
     discover_lan_ipv4,
@@ -21,6 +18,26 @@ from lanimals.network import (
     mdns_name_matches,
     terminal_qr,
 )
+
+
+def default_gui_data_dir(
+    *,
+    frozen: bool,
+    executable: str,
+    platform: str = sys.platform,
+    home: Path | None = None,
+) -> Path:
+    """桌面版默认数据目录。
+
+    源码运行使用当前目录下的 data/；Windows/Linux 便携版放在可执行文件旁；
+    macOS 的 .app 包内部可能只读（App Translocation）且会随升级被整体替换，
+    因此放到 ~/Library/Application Support/LANimals。
+    """
+    if not frozen:
+        return Path("data").resolve()
+    if platform == "darwin":
+        return (home or Path.home()) / "Library" / "Application Support" / "LANimals"
+    return Path(executable).resolve().parent / "data"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -128,7 +145,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command is None:
         if getattr(sys, "frozen", False) or os.environ.get("LANIMALS_FORCE_GUI") == "1":
             from lanimals.gui import run_gui
-            default_data_dir = (Path(sys.executable).parent / "data") if getattr(sys, "frozen", False) else Path("data").resolve()
+            default_data_dir = default_gui_data_dir(frozen=getattr(sys, "frozen", False), executable=sys.executable)
             return run_gui(data_dir=default_data_dir)
         return _interactive_menu(Path("data").resolve())
     data_dir = Path(args.data_dir).expanduser().resolve()
@@ -147,6 +164,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             password = os.environ.get("LANIMALS_PASSWORD") or _prompt_new_password()
             create_config(data_dir, password=password)
         config = load_config(data_dir)
+        # Web 服务依赖只在 serve 时加载，桌面控制面板启动不必等待它们。
+        import uvicorn
+
+        from lanimals.main import create_app
+
         app = create_app(
             data_dir=data_dir,
             password_hash_provider=lambda: load_config(data_dir).password_hash,

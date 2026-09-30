@@ -15,7 +15,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QMouseEvent, QPainter
 from PySide6.QtWidgets import QAbstractButton, QComboBox, QLabel, QToolButton, QWidget
 
-from lanimals.gui.qt_theme import QtTheme
+from lanimals.gui.qt_theme import QtTheme, ui_font_css
 
 
 class AnimatedToggle(QAbstractButton):
@@ -110,7 +110,7 @@ class HoverToolButton(QToolButton):
                 border-radius: 6px;
                 color: {normal_text};
                 font-size: 16px;
-                font-family: 'Microsoft YaHei UI';
+                font-family: {ui_font_css()};
             }}
             QToolButton:hover {{
                 background: {hover_background};
@@ -173,8 +173,18 @@ class DragRegion(QWidget):
             return
         super().mousePressEvent(event)
 
+    def _start_system_move(self) -> bool:
+        """优先交给窗口管理器拖动：Wayland 只允许这种方式，其他平台还能获得贴边吸附。"""
+        handle = self._target_window.windowHandle()
+        return handle is not None and handle.startSystemMove()
+
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt API 命名
         if self._drag_origin is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            if self._start_system_move():
+                # 系统接管后续拖动，本控件不会再收到这次拖动的移动事件。
+                self._drag_origin = None
+                event.accept()
+                return
             current = event.globalPosition().toPoint()
             self._target_window.move(self._target_window.pos() + current - self._drag_origin)
             self._drag_origin = current

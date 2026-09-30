@@ -8,6 +8,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import QApplication, QFrame, QWidget
 
 from lanimals.config import load_config
@@ -94,6 +95,8 @@ def test_clear_data_card_runs_the_host_local_action_before_dismissing(
     assert window._modal_overlay is None
     window._quitting = True
     window.close()
+    window.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def test_password_modal_blurs_only_its_in_window_background(qt_application: QApplication) -> None:
@@ -172,3 +175,5 @@ def test_first_password_flow_saves_config_and_starts_from_the_in_window_card(
     assert window._modal_overlay is None
     window._quitting = True
     window.close()
+    window.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

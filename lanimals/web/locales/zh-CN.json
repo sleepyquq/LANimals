@@ -77,7 +77,7 @@
     "lanAccess": "局域网访问",
     "networkAdapter": "局域网网卡",
     "autoDetect": "自动选择",
-    "maxUploadSize": "单文件上传上限 (GB)",
+    "maxUploadSize": "单文件上传上限",
     "maxUploadSizeInvalid": "请输入 0.1 ~ 512 之间的数字",
     "settingsSaveFailed": "保存设置失败，请重试",
     "saveAndRestart": "保存并重启",
@@ -101,6 +101,11 @@
     "trayShow": "显示控制面板",
     "trayOpen": "在浏览器打开",
     "trayToggle": "启动/停止服务",
-    "trayExit": "退出应用"
+    "trayExit": "退出应用",
+    "lanAccessFailed": "切换局域网访问失败，请重试",
+    "sectionNetwork": "网络",
+    "sectionChat": "群聊",
+    "roomPassword": "群聊密码",
+    "modify": "修改"
   }
 }

@@ -1,3 +1,5 @@
+import uvicorn
+
 from lanimals import __main__ as command
 from lanimals.config import load_config, verify_password
 from lanimals.network import LanCandidate, LanSelection
@@ -30,7 +32,7 @@ def test_first_serve_prompts_host_for_password_and_starts_with_saved_hash(tmp_pa
     monkeypatch.setattr(command, "mdns_name_matches", lambda *_args: False)
     monkeypatch.setattr(command, "terminal_qr", lambda url: f"QR:{url}\n")
     monkeypatch.setattr(
-        command.uvicorn,
+        uvicorn,
         "run",
         lambda app, **options: started.update({"app": app, "options": options}),
     )
@@ -70,7 +72,7 @@ def test_serve_prints_local_name_ip_fallback_qr_and_network_guidance(tmp_path, m
     monkeypatch.setattr(command, "advertise_mdns", lambda *_args: FakeAdvertisement())
     monkeypatch.setattr(command, "mdns_name_matches", lambda *_args: True)
     monkeypatch.setattr(command, "terminal_qr", lambda url: f"QR:{url}\n")
-    monkeypatch.setattr(command.uvicorn, "run", lambda *_args, **_options: None)
+    monkeypatch.setattr(uvicorn, "run", lambda *_args, **_options: None)
 
     assert command.main(["serve", "--data-dir", str(tmp_path)]) == 0
 
