@@ -1,12 +1,14 @@
-"""LANimals 跨平台系统托盘管理。"""
+"""LANimals 跨平台系统托盘管理（Qt 原生 QSystemTrayIcon）。"""
 
 from __future__ import annotations
 
 import logging
-import threading
-from typing import Any, Callable
+import sys
+from typing import Callable
 
 from PIL import Image
+from PySide6.QtGui import QIcon, QImage, QPixmap
+from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from lanimals.gui.i18n import t
 from lanimals.gui.theme import load_app_icon_image
@@ -19,8 +21,19 @@ def create_tray_image(size: int = 64) -> Image.Image:
     return load_app_icon_image(size)
 
 
+def _tray_icon() -> QIcon:
+    icon = QIcon()
+    for size in (16, 32, 64):
+        rgba = create_tray_image(size).convert("RGBA")
+        image = QImage(
+            rgba.tobytes("raw", "RGBA"), rgba.width, rgba.height, rgba.width * 4, QImage.Format.Format_RGBA8888
+        ).copy()
+        icon.addPixmap(QPixmap.fromImage(image))
+    return icon
+
+
 class SystemTray:
-    """封装 pystray 系统托盘交互。"""
+    """在 Qt 主线程运行的系统托盘；Windows、macOS 与 Linux 使用各自的原生实现。"""
 
     def __init__(
         self,
@@ -34,42 +47,60 @@ class SystemTray:
         self.on_toggle_server = on_toggle_server
         self.on_exit = on_exit
 
-        self._icon: Any | None = None
-        self._thread: threading.Thread | None = None
+        self._icon: QSystemTrayIcon | None = None
+        self._menu: QMenu | None = None
+
+    @property
+    def available(self) -> bool:
+        """托盘图标是否真正显示；为 False 时主窗口不能隐藏到托盘。"""
+        return self._icon is not None
 
     def start(self) -> None:
-        """在真正需要托盘时才加载平台后端，缺失时仍保留主窗口可用。"""
+        """在真正需要托盘时才创建原生图标，桌面环境不支持时主窗口仍可用。"""
         try:
-            import pystray
+            if not QSystemTrayIcon.isSystemTrayAvailable():
+                logger.warning("当前桌面环境没有系统托盘，关闭按钮将改为最小化。")
+                return
+            menu = QMenu()
+            menu.addAction(t("gui.trayShow")).triggered.connect(lambda: self.on_show())
+            menu.addAction(t("gui.trayOpen")).triggered.connect(lambda: self.on_open_browser())
+            menu.addAction(t("gui.trayToggle")).triggered.connect(lambda: self.on_toggle_server())
+            menu.addSeparator()
+            menu.addAction(t("gui.trayExit")).triggered.connect(lambda: self.stop_and_exit())
 
-            image = create_tray_image(64)
-            menu = pystray.Menu(
-                pystray.MenuItem(t("gui.trayShow"), lambda: self.on_show(), default=True),
-                pystray.MenuItem(t("gui.trayOpen"), lambda: self.on_open_browser()),
-                pystray.MenuItem(t("gui.trayToggle"), lambda: self.on_toggle_server()),
-                pystray.Menu.SEPARATOR,
-                pystray.MenuItem(t("gui.trayExit"), lambda: self.stop_and_exit()),
-            )
-            self._icon = pystray.Icon("lanimals", image, "LANimals", menu)
-            self._thread = threading.Thread(target=self._icon.run, daemon=True, name="lanimals-tray")
-            self._thread.start()
+            icon = QSystemTrayIcon(_tray_icon())
+            icon.setToolTip("LANimals")
+            icon.setContextMenu(menu)
+            icon.activated.connect(self._on_activated)
+            icon.show()
+            self._menu = menu
+            self._icon = icon
         except Exception as error:
             logger.warning("系统托盘不可用，主窗口将继续运行：%s", error)
-            self._icon = None
+            self.stop()
+
+    def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        # macOS 单击菜单栏图标时系统会弹出菜单，此时不抢占前台窗口。
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick or (
+            reason == QSystemTrayIcon.ActivationReason.Trigger and sys.platform != "darwin"
+        ):
+            self.on_show()
 
     def stop_and_exit(self) -> None:
-        if self._icon:
-            try:
-                self._icon.stop()
-            except Exception:
-                pass
-            self._icon = None
+        self.stop()
         self.on_exit()
 
     def stop(self) -> None:
-        if self._icon:
+        if self._icon is not None:
             try:
-                self._icon.stop()
+                self._icon.hide()
+                self._icon.deleteLater()
             except Exception:
                 pass
             self._icon = None
+        if self._menu is not None:
+            try:
+                self._menu.deleteLater()
+            except Exception:
+                pass
+            self._menu = None

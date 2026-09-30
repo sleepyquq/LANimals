@@ -17,7 +17,6 @@ dependencies = [
   "python-multipart>=0.0.9,<1.0",
   "PySide6-Essentials>=6.8,<7",
   "pillow>=10.0.0",
-  "pystray>=0.19.5",
 ]
 
 [project.optional-dependencies]

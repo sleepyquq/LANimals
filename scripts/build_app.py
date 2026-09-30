@@ -37,12 +37,6 @@ def main() -> int:
 
     print(f"\n=== [2/4] 配置 PyInstaller 打包参数 (平台: {platform.system()}) ===")
     path_sep = ";" if sys.platform == "win32" else ":"
-    if sys.platform == "win32":
-        tray_backend = "pystray._win32"
-    elif sys.platform == "darwin":
-        tray_backend = "pystray._darwin"
-    else:
-        tray_backend = "pystray._xorg"
 
     # 包含 Web 静态前端资源与 GUI 图标
     web_data = f"lanimals/web{path_sep}lanimals/web"
@@ -68,7 +62,6 @@ def main() -> int:
         "--hidden-import=uvicorn.protocols.websockets.auto",
         "--hidden-import=uvicorn.lifespan",
         "--hidden-import=uvicorn.lifespan.on",
-        f"--hidden-import={tray_backend}",
     ]
 
     if args.mode == "onefile":

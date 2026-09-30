@@ -433,8 +433,11 @@ class LANimalsApp(QMainWindow):
         self.showMinimized()
 
     def hide_to_tray(self) -> None:
-        """关闭按钮只隐藏至托盘，不暴露远程管理操作。"""
-        self.hide()
+        """关闭按钮只隐藏至托盘，不暴露远程管理操作；没有托盘时改为最小化，避免窗口无处可找。"""
+        if self.tray.available:
+            self.hide()
+        else:
+            self.showMinimized()
 
     def _tray_open_browser(self) -> None:
         self.open_browser_requested.emit()
