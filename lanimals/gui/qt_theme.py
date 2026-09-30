@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
 
+# 主窗口外壳圆角；无原生圆角的平台由窗口自身按该半径绘制并裁剪遮罩。
+WINDOW_CORNER_RADIUS = 8
+
 
 @dataclass(frozen=True)
 class QtTheme:

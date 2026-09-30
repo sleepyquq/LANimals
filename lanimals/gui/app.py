@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWi
 from lanimals.gui.controller import ServerController
 from lanimals.gui.dialogs import ClearDataDialog, InWindowModalOverlay, PasswordDialog
 from lanimals.gui.i18n import t
-from lanimals.gui.qt_theme import QtTheme, current_theme
+from lanimals.gui.qt_theme import WINDOW_CORNER_RADIUS, QtTheme, current_theme
 from lanimals.gui.single_instance import SingleInstanceLock
 from lanimals.gui.tray import SystemTray
 from lanimals.gui.views import MainView, SettingsView
@@ -25,6 +25,16 @@ from lanimals.gui.widgets import DragRegion, HoverToolButton, PageHost
 
 
 logger = logging.getLogger("lanimals.app")
+
+
+def native_rounded_corners_available() -> bool:
+    """只有 Windows 11（build 22000+）能由 DWM 为无边框窗口裁出原生圆角与阴影。"""
+    if sys.platform != "win32":
+        return False
+    try:
+        return sys.getwindowsversion().build >= 22000
+    except Exception:
+        return False
 
 
 def _setup_app_logging(data_dir: Path) -> None:
@@ -77,8 +87,16 @@ class LANimalsApp(QMainWindow):
         self.setWindowTitle("LANimals")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.setFixedSize(340, 430)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
-        self.setStyleSheet(f"QMainWindow {{ background: {self.theme.background}; }}")
+        # 圆角方案必须在窗口首次显示前确定，运行中不再切换窗口属性。
+        self._native_rounded_corners = native_rounded_corners_available()
+        if self._native_rounded_corners:
+            # Windows 11：不透明窗口 + DWM 原生圆角与阴影。
+            self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+            self.setStyleSheet(f"QMainWindow {{ background: {self.theme.background}; }}")
+        else:
+            # 其他平台：透明顶层窗口，由圆角外壳自行绘制抗锯齿圆角。
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            self.setStyleSheet("QMainWindow { background: transparent; }")
         self._setup_window_icon()
         self._set_windows_app_identity()
 
@@ -128,7 +146,7 @@ class LANimalsApp(QMainWindow):
             QFrame#lanimals-shell {{
                 background: {self.theme.background};
                 border: 1px solid {self.theme.card_border};
-                border-radius: 8px;
+                border-radius: {WINDOW_CORNER_RADIUS}px;
             }}
             """
         )
@@ -450,8 +468,10 @@ class LANimalsApp(QMainWindow):
         self.hide_to_tray()
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802 - Qt API 命名
-        # WA_OpaquePaintEvent 要求自行铺满整个窗口；否则外壳圆角外侧会残留未初始化像素。
-        # Windows 11 由 DWM 裁出原生圆角，其他系统则显示为背景色直角。
+        if not self._native_rounded_corners:
+            return
+        # WA_OpaquePaintEvent 要求自行铺满整个窗口；否则外壳圆角外侧会残留未初始化像素，
+        # 这些像素随后由 DWM 圆角裁掉。
         painter = QPainter(self)
         painter.fillRect(event.rect(), QColor(self.theme.background))
         painter.end()
@@ -464,7 +484,7 @@ class LANimalsApp(QMainWindow):
 
     def _configure_windows_dwm(self) -> None:
         """仅请求 Windows 11 原生圆角/深色适配，不触碰窗口边框样式。"""
-        if sys.platform != "win32":
+        if not self._native_rounded_corners:
             return
         try:
             import ctypes
