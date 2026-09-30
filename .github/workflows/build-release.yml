@@ -4,7 +4,15 @@ on:
   push:
     tags:
       - 'v*'
+  # 网页发布：Actions → Build and Release LANimals → Run workflow，分支选 main 并填写版本号。
+  # 版本号留空则只打包、不发布。
   workflow_dispatch:
+    inputs:
+      version:
+        description: '发布版本号（如 v0.3.0，须与 pyproject.toml 一致）；留空只打包不发布'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -14,8 +22,29 @@ env:
   PYTHONUTF8: '1'
 
 jobs:
+  validate:
+    name: Validate release version
+    if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check version format, pyproject.toml, branch, and existing tags
+        env:
+          VERSION: ${{ inputs.version }}
+        run: python scripts/check_release_version.py "$VERSION" --ref "$GITHUB_REF"
+
   build:
     name: Build on ${{ matrix.os }}
+    needs: validate
+    # validate 被跳过（推送标签或只打包）时仍继续；校验失败或手动取消时停止。
+    if: ${{ !cancelled() && needs.validate.result != 'failure' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -92,8 +121,12 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [validate, build]
+    # 推送 v* 标签，或网页填写了版本号且校验通过；任一平台打包失败都不会发布。
+    if: >-
+      !cancelled() && needs.build.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') ||
+       (github.event_name == 'workflow_dispatch' && inputs.version != '' && needs.validate.result == 'success'))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -109,6 +142,9 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          # 网页发布时由 Release 在本次构建的提交上创建标签；推送标签时沿用该标签。
+          tag_name: ${{ inputs.version || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           files: release-assets/**/*
           draft: false
           prerelease: false
