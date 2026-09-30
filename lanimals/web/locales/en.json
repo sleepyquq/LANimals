@@ -77,7 +77,7 @@
     "lanAccess": "LAN Access",
     "networkAdapter": "Network Adapter",
     "autoDetect": "Auto detect",
-    "maxUploadSize": "Max upload size (GB)",
+    "maxUploadSize": "Max file size",
     "maxUploadSizeInvalid": "Please enter a number between 0.1 and 512",
     "settingsSaveFailed": "Could not save the setting. Please try again.",
     "saveAndRestart": "Save & Restart",
@@ -101,6 +101,11 @@
     "trayShow": "Show Control Panel",
     "trayOpen": "Open in Browser",
     "trayToggle": "Start / Stop Server",
-    "trayExit": "Exit LANimals"
+    "trayExit": "Exit LANimals",
+    "lanAccessFailed": "Could not switch LAN access. Please try again.",
+    "sectionNetwork": "Network",
+    "sectionChat": "Chat room",
+    "roomPassword": "Room password",
+    "modify": "Change"
   }
 }

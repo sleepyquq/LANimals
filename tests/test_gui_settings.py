@@ -11,6 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from lanimals.gui.i18n import t
 from lanimals.gui.qt_theme import current_theme
 from lanimals.gui.views import SettingsView
 
@@ -74,38 +75,47 @@ def test_save_and_restart_applies_all_staged_settings_in_one_controller_action(q
     view = SettingsView(app, current_theme())
     view.refresh_settings()
 
+    # 没有改动时“保存并重启”不可点，避免无意义的重启。
+    assert not view.save_restart_button.isEnabled()
+
     view.upload_entry.setText("1.5")
-    view.lan_switch.click()
     view.adapter_menu.setCurrentIndex(1)
+    assert view.save_restart_button.isEnabled()
     view._on_save_settings()
 
     assert app.controller.applied_settings == []
     assert app._pending is not None
     assert not view.upload_entry.isEnabled()
-    assert not view.lan_switch.isEnabled()
     assert not view.adapter_menu.isEnabled()
+    assert not view.save_restart_button.isEnabled()
 
     app.finish_action()
 
-    assert app.controller.applied_settings == [(True, "Wi-Fi", "1.5GB")]
+    # 局域网访问已移到主页，保存设置时沿用控制器当前的访问模式。
+    assert app.controller.applied_settings == [(False, "Wi-Fi", "1.5GB")]
     assert view.upload_entry.isEnabled()
     assert view.upload_error_label.text() == ""
+    assert not view.save_restart_button.isEnabled()
 
 
-def test_lan_switch_is_staged_until_save_and_restart_is_clicked(qt_application: QApplication) -> None:
+def test_settings_page_no_longer_owns_the_lan_switch(qt_application: QApplication) -> None:
+    app = _QueuedApp()
+    app.controller.local_only = True
+    view = SettingsView(app, current_theme())
+    view.refresh_settings()
+
+    assert not hasattr(view, "lan_switch")
+    # 仅本机模式下网卡选择没有意义。
+    assert not view.adapter_menu.isEnabled()
+
+
+def test_invalid_upload_size_is_reported_without_saving(qt_application: QApplication) -> None:
     app = _QueuedApp()
     view = SettingsView(app, current_theme())
     view.refresh_settings()
 
-    view.lan_switch.click()
+    view.upload_entry.setText("abc")
+    view._on_save_settings()
 
     assert app._pending is None
-    assert app.controller.local_only is False
-    assert view.save_restart_button.isEnabled()
-
-    view._on_save_settings()
-    app.finish_action()
-
-    assert app.controller.local_only is True
-    assert view.lan_switch.isEnabled()
-    assert not view.adapter_menu.isEnabled()
+    assert view.upload_error_label.text() == t("gui.maxUploadSizeInvalid")

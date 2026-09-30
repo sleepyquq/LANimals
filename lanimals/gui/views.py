@@ -90,6 +90,7 @@ class MainView(QWidget):
         self.app = app
         self.theme = theme
         self._current_url = ""
+        self._lan_pending = False
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -109,17 +110,19 @@ class MainView(QWidget):
         brand.setStyleSheet(f"color: {self.theme.text_main};")
         header.addWidget(brand)
 
-        self.status_dot = QLabel(self)
-        self.status_dot.setFixedSize(10, 10)
-        self._set_status_dot(False)
-        header.addWidget(self.status_dot)
+        # 局域网访问开关：开 = 局域网内设备可加入，关 = 仅本机；切换后立即重启服务生效。
+        self.lan_switch = AnimatedToggle(self.theme, self)
+        self.lan_switch.setToolTip(t("gui.lanAccess"))
+        self.lan_switch.setAccessibleName(t("gui.lanAccess"))
+        self.lan_switch.toggled.connect(self._on_lan_access_toggle)
+        header.addWidget(self.lan_switch, alignment=Qt.AlignmentFlag.AlignVCenter)
         header.addStretch(1)
         layout.addLayout(header)
 
         layout.addStretch(1)
         self.qr_box = QFrame(self)
         self.qr_box.setFixedSize(184, 184)
-        self.qr_box.setStyleSheet("background: #ffffff; border: none; border-radius: 12px;")
+        self._set_qr_box_background("#ffffff")
         qr_layout = QVBoxLayout(self.qr_box)
         qr_layout.setContentsMargins(8, 8, 8, 8)
         self.qr_label = QLabel(self.qr_box)
@@ -171,20 +174,49 @@ class MainView(QWidget):
                 self.link_label.setStyleSheet(f"color: {self.theme.link};")
         return super().eventFilter(watched, event)
 
-    def _set_status_dot(self, is_running: bool) -> None:
-        color = self.theme.status_green if is_running else self.theme.status_gray
-        self.status_dot.setStyleSheet(f"background: {color}; border: none; border-radius: 5px;")
-
     def update_data(self, join_url: str, is_running: bool, local_only: bool = False) -> None:
         self._current_url = join_url
-        self._set_status_dot(is_running)
+        if not self._lan_pending:
+            self.lan_switch.set_state(not local_only, animated=False, emit=False)
         self.link_label.setText(join_url or "http://127.0.0.1:8787/")
-        if join_url:
+        if is_running and join_url:
             self._render_qr_code(join_url)
         else:
             self.qr_label.clear()
+            self._set_qr_box_background(self.theme.secondary_button)
+            self.qr_label.setText(t("gui.statusStopped"))
+            self.qr_label.setStyleSheet(f"background: transparent; color: {self.theme.text_muted}; font-size: 12px;")
+
+    def _on_lan_access_toggle(self, is_lan_on: bool) -> None:
+        self._lan_pending = True
+        self.lan_switch.setEnabled(False)
+        self.app.run_controller_action(
+            lambda: self.app.controller.set_local_only(not is_lan_on),
+            on_success=lambda _result: self._finish_lan_access_toggle(),
+            on_error=lambda error: self._fail_lan_access_toggle(is_lan_on, error),
+        )
+
+    def _finish_lan_access_toggle(self) -> None:
+        self._lan_pending = False
+        self.lan_switch.setEnabled(True)
+        self.lan_switch.set_state(not self.app.controller.local_only, animated=False, emit=False)
+
+    def _fail_lan_access_toggle(self, attempted: bool, error: Exception) -> None:
+        logger.warning("切换局域网访问失败: %s", error)
+        self._lan_pending = False
+        self.lan_switch.setEnabled(True)
+        self.lan_switch.set_state(not attempted, animated=True, emit=False)
+        self.toast.setText(t("gui.lanAccessFailed"))
+        self.app.schedule_toast_clear(self.toast)
+
+    def _set_qr_box_background(self, color: str) -> None:
+        self.qr_box.setStyleSheet(f"background: {color}; border: none; border-radius: 12px;")
 
     def _render_qr_code(self, url: str) -> None:
+        # 二维码必须在白底上才能被手机稳定识别。
+        self._set_qr_box_background("#ffffff")
+        self.qr_label.setText("")
+        self.qr_label.setStyleSheet("background: transparent;")
         try:
             image = qr_pil_image(url, scale=4, border=1)
             self.qr_label.setPixmap(_pixmap_from_pil(image).scaled(
@@ -227,51 +259,28 @@ class SettingsView(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 12, 20, 16)
+        layout.setContentsMargins(16, 6, 16, 14)
         layout.setSpacing(0)
 
-        net_card = QFrame(self)
-        net_card.setObjectName("settings-card")
-        net_card.setStyleSheet(_card_style(self.theme))
-        net_layout = QVBoxLayout(net_card)
-        net_layout.setContentsMargins(16, 14, 16, 14)
-        net_layout.setSpacing(0)
-
-        access_row = QHBoxLayout()
-        access_row.setSpacing(8)
-        lan_label = _settings_field_label(t("gui.lanAccess"), net_card, self.theme)
-        access_row.addWidget(lan_label)
-        self.lan_switch = AnimatedToggle(self.theme, net_card)
-        self.lan_switch.toggled.connect(self._on_lan_access_toggle)
-        access_row.addWidget(self.lan_switch)
-        access_row.addStretch(1)
-        net_layout.addLayout(access_row)
-        net_layout.addSpacing(12)
-
-        adapter_label = _settings_field_label(t("gui.networkAdapter"), net_card, self.theme)
-        net_layout.addWidget(adapter_label)
-        net_layout.addSpacing(6)
-
+        # 网络：局域网访问开关已在主页，这里只保留网卡选择。
+        layout.addWidget(self._section_caption(t("gui.sectionNetwork")))
+        net_card, net_rows = self._card()
         self.adapter_menu = WarmComboBox(self.theme, net_card)
-        self.adapter_menu.setFixedHeight(34)
+        self.adapter_menu.setFixedHeight(30)
+        self.adapter_menu.setMinimumWidth(120)
         self.adapter_menu.setCursor(Qt.CursorShape.PointingHandCursor)
         self.adapter_menu.setStyleSheet(
             f"""
             QComboBox {{
                 background: {self.theme.entry_background};
                 border: 1px solid {self.theme.entry_border};
-                border-radius: 8px;
+                border-radius: 7px;
                 color: {self.theme.text_main};
-                padding: 0 10px;
+                padding: 0 26px 0 10px;
             }}
             QComboBox:hover {{ border-color: {self.theme.secondary_hover}; }}
-            QComboBox::drop-down {{
-                border: none;
-                width: 28px;
-                background: {self.theme.secondary_button};
-                border-top-right-radius: 8px;
-                border-bottom-right-radius: 8px;
-            }}
+            QComboBox:disabled {{ color: {self.theme.text_subtle}; }}
+            QComboBox::drop-down {{ border: none; width: 24px; }}
             QComboBox QAbstractItemView {{
                 background: {self.theme.card};
                 border: 1px solid {self.theme.card_border};
@@ -282,61 +291,146 @@ class SettingsView(QWidget):
             """
         )
         self.adapter_menu.currentTextChanged.connect(self._on_adapter_selected)
-        net_layout.addWidget(self.adapter_menu)
+        self._add_row(net_rows, net_card, t("gui.networkAdapter"), self.adapter_menu, stretch_control=True)
         layout.addWidget(net_card)
-        layout.addSpacing(12)
+        layout.addSpacing(14)
 
-        security_card = QFrame(self)
-        security_card.setObjectName("settings-card")
-        security_card.setStyleSheet(_card_style(self.theme))
-        security_layout = QVBoxLayout(security_card)
-        security_layout.setContentsMargins(16, 14, 16, 14)
-        security_layout.setSpacing(0)
-
-        upload_label = _settings_field_label(t("gui.maxUploadSize"), security_card, self.theme)
-        security_layout.addWidget(upload_label)
-        security_layout.addSpacing(6)
-
-        self.upload_entry = QLineEdit(security_card)
+        # 群聊：上传上限与密码。
+        layout.addWidget(self._section_caption(t("gui.sectionChat")))
+        chat_card, chat_rows = self._card()
+        upload_control = QWidget(chat_card)
+        upload_layout = QHBoxLayout(upload_control)
+        upload_layout.setContentsMargins(0, 0, 0, 0)
+        upload_layout.setSpacing(6)
+        self.upload_entry = QLineEdit(upload_control)
         self.upload_entry.setPlaceholderText("2")
-        self.upload_entry.setFixedHeight(34)
+        self.upload_entry.setFixedSize(58, 30)
+        self.upload_entry.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.upload_entry.setStyleSheet(
+            f"""
+            QLineEdit {{
+                background: {self.theme.entry_background};
+                border: 1px solid {self.theme.entry_border};
+                border-radius: 7px;
+                color: {self.theme.text_main};
+                padding: 0 8px;
+            }}
+            QLineEdit:focus {{ border-color: {self.theme.accent}; }}
+            QLineEdit:disabled {{ color: {self.theme.text_subtle}; }}
+            """
+        )
         self.upload_entry.textChanged.connect(self._on_setting_edited)
-        security_layout.addWidget(self.upload_entry)
-        security_layout.addSpacing(2)
+        unit = QLabel("GB", upload_control)
+        unit.setStyleSheet(f"color: {self.theme.text_muted}; font-size: 11px;")
+        upload_layout.addWidget(self.upload_entry)
+        upload_layout.addWidget(unit)
+        self._add_row(chat_rows, chat_card, t("gui.maxUploadSize"), upload_control)
 
-        self.upload_error_label = QLabel("", security_card)
-        self.upload_error_label.setMinimumHeight(14)
-        self.upload_error_label.setStyleSheet(f"color: {self.theme.danger}; font-size: 10px;")
-        security_layout.addWidget(self.upload_error_label)
-        security_layout.addSpacing(8)
-
-        self.password_button = QPushButton(button_text("gui.changePassword"), security_card)
+        self.password_button = QPushButton(button_text("gui.modify"), chat_card)
+        self.password_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.password_button.setStyleSheet(
-            _button_style(
-                self.theme,
-                self.theme.secondary_button,
-                self.theme.secondary_hover,
-                self.theme.secondary_text,
-            )
+            f"""
+            QPushButton {{
+                background: {self.theme.secondary_button};
+                border: none;
+                border-radius: 7px;
+                color: {self.theme.secondary_text};
+                min-height: 28px;
+                padding: 0 14px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{ background: {self.theme.secondary_hover}; }}
+            """
         )
         self.password_button.clicked.connect(self._on_change_password)
-        security_layout.addWidget(self.password_button)
-        layout.addWidget(security_card)
-        layout.addSpacing(8)
+        self._add_row(chat_rows, chat_card, t("gui.roomPassword"), self.password_button)
+        layout.addWidget(chat_card)
+
+        self.upload_error_label = QLabel("", self)
+        self.upload_error_label.setMinimumHeight(18)
+        self.upload_error_label.setContentsMargins(4, 4, 4, 0)
+        self.upload_error_label.setStyleSheet(f"color: {self.theme.danger}; font-size: 10px;")
+        layout.addWidget(self.upload_error_label)
+        layout.addStretch(1)
 
         self.save_restart_button = QPushButton(button_text("gui.saveAndRestart"), self)
+        self.save_restart_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.save_restart_button.setStyleSheet(
             _button_style(self.theme, self.theme.accent, self.theme.accent_hover, "#ffffff")
+            + f"""
+            QPushButton:disabled {{
+                background: {self.theme.secondary_button};
+                color: {self.theme.text_subtle};
+            }}
+            """
         )
         self.save_restart_button.clicked.connect(self._on_save_settings)
         layout.addWidget(self.save_restart_button)
-        layout.addSpacing(8)
+        layout.addSpacing(6)
 
+        # 危险操作弱化为文字按钮，不再用大面积红色抢占页面。
         self.clear_button = QPushButton(button_text("gui.clearData"), self)
-        self.clear_button.setStyleSheet(_button_style(self.theme, self.theme.danger, self.theme.danger_hover, "#ffffff"))
+        self.clear_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.clear_button.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                border-radius: 8px;
+                color: {self.theme.danger};
+                min-height: 30px;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{ background: {self.theme.secondary_button}; }}
+            """
+        )
         self.clear_button.clicked.connect(self._on_clear_data)
         layout.addWidget(self.clear_button)
-        layout.addStretch(1)
+
+    def _section_caption(self, text: str) -> QLabel:
+        caption = QLabel(text, self)
+        caption.setFont(ui_font(9, QFont.Weight.DemiBold))
+        caption.setContentsMargins(6, 0, 0, 6)
+        caption.setStyleSheet(f"color: {self.theme.text_muted};")
+        return caption
+
+    def _card(self) -> tuple[QFrame, QVBoxLayout]:
+        card = QFrame(self)
+        card.setObjectName("settings-card")
+        card.setStyleSheet(_card_style(self.theme))
+        rows = QVBoxLayout(card)
+        rows.setContentsMargins(0, 0, 0, 0)
+        rows.setSpacing(0)
+        return card, rows
+
+    def _add_row(
+        self,
+        rows: QVBoxLayout,
+        card: QFrame,
+        label_text: str,
+        control: QWidget,
+        *,
+        stretch_control: bool = False,
+    ) -> None:
+        """设置项统一为“左侧名称、右侧控件”的单行，行间以细分隔线区分。"""
+        if rows.count():
+            divider = QFrame(card)
+            divider.setFixedHeight(1)
+            divider.setStyleSheet(f"background: {self.theme.card_border}; margin-left: 14px;")
+            rows.addWidget(divider)
+        row = QWidget(card)
+        row.setFixedHeight(48)
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(14, 0, 10, 0)
+        row_layout.setSpacing(12)
+        row_layout.addWidget(_settings_field_label(label_text, row, self.theme))
+        if stretch_control:
+            row_layout.addWidget(control, 1)
+        else:
+            row_layout.addStretch(1)
+            row_layout.addWidget(control)
+        rows.addWidget(row)
 
     def refresh_settings(self, *, force: bool = False) -> None:
         """用已保存的控制器状态刷新表单，不覆盖用户尚未保存的草稿。"""
@@ -344,7 +438,6 @@ class SettingsView(QWidget):
             return
         self._refreshing = True
         try:
-            self.lan_switch.set_state(not self.app.controller.local_only, animated=False, emit=False)
             try:
                 size = self.app.controller.get_max_upload_size()
                 gb_value = parse_size(size) / (1024 * 1024 * 1024)
@@ -375,12 +468,6 @@ class SettingsView(QWidget):
         finally:
             self._refreshing = False
 
-    def _on_lan_access_toggle(self, is_lan_on: bool) -> None:
-        if self._refreshing or self._save_pending:
-            return
-        self.adapter_menu.setEnabled(is_lan_on)
-        self._mark_settings_dirty()
-
     def _on_adapter_selected(self, choice: str) -> None:
         if self._refreshing or self._save_pending:
             return
@@ -394,13 +481,13 @@ class SettingsView(QWidget):
 
     def _mark_settings_dirty(self) -> None:
         self._has_unsaved_changes = True
+        self.save_restart_button.setEnabled(not self._save_pending)
 
     def _set_settings_controls_enabled(self, enabled: bool) -> None:
-        """保存/重启期间冻结所有会影响同一份主机配置的字段。"""
-        self.lan_switch.setEnabled(enabled)
-        self.adapter_menu.setEnabled(enabled and self.lan_switch.isChecked())
+        """保存/重启期间冻结所有会影响同一份主机配置的字段；没有改动时不可保存。"""
+        self.adapter_menu.setEnabled(enabled and not self.app.controller.local_only)
         self.upload_entry.setEnabled(enabled)
-        self.save_restart_button.setEnabled(enabled)
+        self.save_restart_button.setEnabled(enabled and self._has_unsaved_changes)
 
     def _on_save_settings(self) -> None:
         if self._refreshing or self._save_pending:
@@ -421,7 +508,7 @@ class SettingsView(QWidget):
         adapter_name = self._adapter_map.get(self.adapter_menu.currentText())
         self.app.run_controller_action(
             lambda: self.app.controller.apply_settings(
-                local_only=not self.lan_switch.isChecked(),
+                local_only=self.app.controller.local_only,
                 adapter_name=adapter_name,
                 max_upload_size=f"{number:g}GB",
             ),
