@@ -181,6 +181,9 @@ class MainView(QWidget):
         self.link_label.setText(join_url or "http://127.0.0.1:8787/")
         if is_running and join_url:
             self._render_qr_code(join_url)
+        elif self._lan_pending:
+            # 拨杆触发的重启会先停后启，保留原二维码，避免瞬间闪现“已停止”。
+            return
         else:
             self.qr_label.clear()
             self._set_qr_box_background(self.theme.secondary_button)

@@ -104,3 +104,18 @@ def test_stopped_service_is_shown_in_place_of_the_qr_code(qt_application: QAppli
     assert view.qr_label.text() == ""
     assert view.qr_label.pixmap() is not None and not view.qr_label.pixmap().isNull()
     assert "#ffffff" in view.qr_box.styleSheet()
+
+
+def test_restart_triggered_by_the_switch_does_not_flash_the_stopped_state(qt_application: QApplication) -> None:
+    """切换拨杆会让服务先停后启；这段瞬时的“已停止”不能闪现在主页上。"""
+    app = _App(_LanController())
+    view = MainView(app, current_theme())
+    view.update_data("http://192.168.1.20:8787/", True, local_only=False)
+
+    view.lan_switch.click()
+    view.update_data("", False, local_only=True)
+    assert view.qr_label.text() != t("gui.statusStopped")
+
+    app.finish_action()
+    view.update_data("http://127.0.0.1:8787/", True, local_only=True)
+    assert view.qr_label.text() == ""
