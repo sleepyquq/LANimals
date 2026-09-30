@@ -62,6 +62,12 @@ jobs:
         run: |
           python scripts/build_app.py --mode onedir
 
+      - name: Launch packaged app and check the local service
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python scripts/smoke_frozen.py --reset-data
+
       - name: Package Windows Artifact
         if: runner.os == 'Windows'
         shell: pwsh

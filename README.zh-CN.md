@@ -177,6 +177,8 @@ Compress-Archive -Path dist\LANimals -DestinationPath dist\LANimals-windows-x64.
 
 macOS 和 Linux 请在 GitHub Actions 页面手动运行 **Build and Release LANimals**。工作流会在各自的原生 runner 上构建并上传 Windows/macOS/Linux 产物；推送 `v*` 标签时会创建 Release。PyInstaller 的 GUI 产物必须在目标系统构建，不应从 Windows 交叉构建。
 
+每次推送还会在 Windows、macOS、Linux 上运行 **CI** 工作流：执行测试、离屏生成控制面板截图（中文、英文和深色主题，可在运行页面下载 `gui-preview-<系统>` 附件），并用 PyInstaller 打出文件夹版后真正启动一次，确认本地服务能正常响应。两个工作流在打包前都会做这项启动检查；本机构建后也可以运行 `python scripts/smoke_frozen.py --reset-data` 复现（它会清空并在结束后删除打包版的数据目录，不要对仍需保留的数据运行）。
+
 ## 数据与备份
 
 运行数据默认保存在 `data/`（macOS 打包版为 `~/Library/Application Support/LANimals`）：

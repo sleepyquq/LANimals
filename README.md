@@ -177,6 +177,8 @@ The portable app is `dist/LANimals/LANimals.exe`; distribute the zip without add
 
 For macOS and Linux, use the **Build and Release LANimals** workflow from the GitHub Actions tab. Its matrix builds the native artifact on each platform, uploads Windows/macOS/Linux artifacts for manual runs, and creates a release when a `v*` tag is pushed. PyInstaller must build on the target OS; do not cross-build those GUI artifacts from Windows.
 
+Every push also runs the **CI** workflow on Windows, macOS, and Linux: the test suite, offscreen control-panel screenshots (Chinese, English, and dark theme; download the `gui-preview-<OS>` artifact from the run page), and a PyInstaller onedir build that is actually launched to confirm the local service answers. Both workflows run the same launch check before packaging; locally you can repeat it after a build with `python scripts/smoke_frozen.py --reset-data` (it clears and then removes the packaged app's data directory, so do not run it against data you want to keep).
+
 ## Data and backups
 
 All runtime data lives under `data/` by default (the packaged macOS app uses `~/Library/Application Support/LANimals` instead):
