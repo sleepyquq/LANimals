@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from lanimals.gui.i18n import button_text, t
-from lanimals.gui.qt_theme import WINDOW_CORNER_RADIUS, QtTheme
+from lanimals.gui.qt_theme import WINDOW_CORNER_RADIUS, QtTheme, ui_font
 
 
 def _button_style(theme: QtTheme, background: str, hover: str, text_color: str) -> str:
@@ -140,7 +140,7 @@ class _BaseCard(QFrame):
 
     def _title(self, text: str) -> QLabel:
         label = QLabel(text, self)
-        label.setFont(QFont("Microsoft YaHei UI", 14, QFont.Weight.DemiBold))
+        label.setFont(ui_font(14, QFont.Weight.DemiBold))
         label.setWordWrap(True)
         self.title_label = label
         return label

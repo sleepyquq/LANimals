@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from lanimals.config import parse_size
 from lanimals.gui.i18n import button_text, t
-from lanimals.gui.qt_theme import QtTheme
+from lanimals.gui.qt_theme import QtTheme, mono_font, ui_font
 from lanimals.gui.theme import create_gear_image, load_app_icon_image
 from lanimals.gui.widgets import AnimatedToggle, ClickableLabel, WarmComboBox
 from lanimals.network import qr_pil_image
@@ -61,7 +61,7 @@ def _card_style(theme: QtTheme) -> str:
 def _settings_field_label(text: str, parent: QWidget, theme: QtTheme) -> QLabel:
     """创建设置项标题，避免字段标签和页面标题争夺视觉层级。"""
     label = QLabel(text, parent)
-    label.setFont(QFont("Microsoft YaHei UI", 10, QFont.Weight.Medium))
+    label.setFont(ui_font(10, QFont.Weight.Medium))
     label.setStyleSheet(f"color: {theme.text_main};")
     return label
 
@@ -105,7 +105,7 @@ class MainView(QWidget):
         header.addWidget(cat_icon)
 
         brand = QLabel("LANimals", self)
-        brand.setFont(QFont("Microsoft YaHei UI", 15, QFont.Weight.DemiBold))
+        brand.setFont(ui_font(15, QFont.Weight.DemiBold))
         brand.setStyleSheet(f"color: {self.theme.text_main};")
         header.addWidget(brand)
 
@@ -132,7 +132,7 @@ class MainView(QWidget):
         link_row = QHBoxLayout()
         link_row.setSpacing(6)
         self.link_label = ClickableLabel(self)
-        self.link_label.setFont(QFont("Consolas", 10))
+        self.link_label.setFont(mono_font(10))
         self.link_label.setStyleSheet(f"color: {self.theme.link};")
         self.link_label.setText("http://127.0.0.1:8787/")
         self.link_label.clicked.connect(self._on_link_click)

@@ -35,7 +35,7 @@ def test_settings_field_labels_use_a_compact_shared_text_style() -> None:
     source = _source("lanimals/gui/views.py")
 
     assert "def _settings_field_label(" in source
-    assert 'QFont("Microsoft YaHei UI", 10, QFont.Weight.Medium)' in source
+    assert "ui_font(10, QFont.Weight.Medium)" in source
     assert source.count("_settings_field_label(") >= 4
 
 

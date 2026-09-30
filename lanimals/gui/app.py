@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWi
 from lanimals.gui.controller import ServerController
 from lanimals.gui.dialogs import ClearDataDialog, InWindowModalOverlay, PasswordDialog
 from lanimals.gui.i18n import t
-from lanimals.gui.qt_theme import WINDOW_CORNER_RADIUS, QtTheme, current_theme
+from lanimals.gui.qt_theme import WINDOW_CORNER_RADIUS, QtTheme, current_theme, ui_font_families
 from lanimals.gui.single_instance import SingleInstanceLock
 from lanimals.gui.tray import SystemTray
 from lanimals.gui.views import MainView, SettingsView
@@ -35,6 +35,23 @@ def native_rounded_corners_available() -> bool:
         return sys.getwindowsversion().build >= 22000
     except Exception:
         return False
+
+
+def window_flags_for_platform(platform: str = sys.platform) -> Qt.WindowType:
+    """无边框主窗口标志；macOS 需保留最小化提示，否则 showMinimized() 不会生效。"""
+    flags = Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
+    if platform == "darwin":
+        flags |= Qt.WindowType.WindowMinimizeButtonHint
+    return flags
+
+
+def apply_platform_application_font(application: QApplication) -> None:
+    """非 Windows 平台把平台中文字体设为全局首选，保持系统默认字号。"""
+    if sys.platform == "win32":
+        return
+    font = application.font()
+    font.setFamilies(ui_font_families())
+    application.setFont(font)
 
 
 def _setup_app_logging(data_dir: Path) -> None:
@@ -62,6 +79,7 @@ class LANimalsApp(QMainWindow):
 
     def __init__(self, data_dir: Path | str = "data", instance_lock: SingleInstanceLock | None = None) -> None:
         self._qt_application = QApplication.instance() or QApplication(sys.argv)
+        apply_platform_application_font(self._qt_application)
         super().__init__()
 
         resolved_data_dir = Path(data_dir).expanduser().resolve()
@@ -85,7 +103,7 @@ class LANimalsApp(QMainWindow):
 
         # Qt 在创建时就拥有无边框标志；绝不在运行中修改 Win32 窗口样式。
         self.setWindowTitle("LANimals")
-        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+        self.setWindowFlags(window_flags_for_platform())
         self.setFixedSize(340, 430)
         # 圆角方案必须在窗口首次显示前确定，运行中不再切换窗口属性。
         self._native_rounded_corners = native_rounded_corners_available()
