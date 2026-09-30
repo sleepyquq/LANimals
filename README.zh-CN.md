@@ -125,7 +125,7 @@ Windows PowerShell：
 .\.venv\Scripts\python.exe -m lanimals gui
 ```
 
-桌面端会显示加入二维码，并把局域网访问与网卡选择、上传上限、修改密码和清除数据都保留在主机上。设置会一起保存，并且只重启一次本地服务；清除数据必须在窗口内的确认卡片中精确输入 `DELETE ALL`。
+桌面端会显示加入二维码，所有管理操作都只在主机上进行。标题旁的局域网访问拨杆切换后立即生效；设置页包含网卡选择、上传上限、修改密码和清除数据。设置会一起保存，并且只重启一次本地服务；清除数据必须在窗口内的确认卡片中精确输入 `DELETE ALL`。
 
 ## 主机管理
 
@@ -163,7 +163,7 @@ Windows PowerShell：
 
 ## Windows 应用与发布构建
 
-Windows GUI 可执行文件会直接打开桌面控制面板，并把运行数据保存在可执行文件同级的 `data/` 目录。
+打包后的程序会直接打开桌面控制面板。Windows 和 Linux 版把运行数据保存在可执行文件同级的 `data/` 目录；macOS 版保存在 `~/Library/Application Support/LANimals`，因为 `.app` 包内部可能是只读的，并且升级时会被整体替换。
 
 本机构建 Windows 便携版：
 
@@ -179,7 +179,7 @@ macOS 和 Linux 请在 GitHub Actions 页面手动运行 **Build and Release LAN
 
 ## 数据与备份
 
-运行数据默认保存在 `data/`：
+运行数据默认保存在 `data/`（macOS 打包版为 `~/Library/Application Support/LANimals`）：
 
 ```text
 data/
