@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from lanimals.config import parse_size
-from lanimals.gui.i18n import t
+from lanimals.gui.i18n import button_text, t
 from lanimals.gui.qt_theme import QtTheme
 from lanimals.gui.theme import create_gear_image, load_app_icon_image
 from lanimals.gui.widgets import AnimatedToggle, ClickableLabel, WarmComboBox
@@ -310,7 +310,7 @@ class SettingsView(QWidget):
         security_layout.addWidget(self.upload_error_label)
         security_layout.addSpacing(8)
 
-        self.password_button = QPushButton(t("gui.changePassword"), security_card)
+        self.password_button = QPushButton(button_text("gui.changePassword"), security_card)
         self.password_button.setStyleSheet(
             _button_style(
                 self.theme,
@@ -324,7 +324,7 @@ class SettingsView(QWidget):
         layout.addWidget(security_card)
         layout.addSpacing(8)
 
-        self.save_restart_button = QPushButton(t("gui.saveAndRestart"), self)
+        self.save_restart_button = QPushButton(button_text("gui.saveAndRestart"), self)
         self.save_restart_button.setStyleSheet(
             _button_style(self.theme, self.theme.accent, self.theme.accent_hover, "#ffffff")
         )
@@ -332,7 +332,7 @@ class SettingsView(QWidget):
         layout.addWidget(self.save_restart_button)
         layout.addSpacing(8)
 
-        self.clear_button = QPushButton(t("gui.clearData"), self)
+        self.clear_button = QPushButton(button_text("gui.clearData"), self)
         self.clear_button.setStyleSheet(_button_style(self.theme, self.theme.danger, self.theme.danger_hover, "#ffffff"))
         self.clear_button.clicked.connect(self._on_clear_data)
         layout.addWidget(self.clear_button)
@@ -417,7 +417,7 @@ class SettingsView(QWidget):
 
         self._save_pending = True
         self._set_settings_controls_enabled(False)
-        self.save_restart_button.setText(t("gui.savingAndRestarting"))
+        self.save_restart_button.setText(button_text("gui.savingAndRestarting"))
         adapter_name = self._adapter_map.get(self.adapter_menu.currentText())
         self.app.run_controller_action(
             lambda: self.app.controller.apply_settings(
@@ -431,13 +431,13 @@ class SettingsView(QWidget):
 
     def _finish_settings_save(self, _saved_size: str) -> None:
         self._save_pending = False
-        self.save_restart_button.setText(t("gui.saveAndRestart"))
+        self.save_restart_button.setText(button_text("gui.saveAndRestart"))
         self.refresh_settings(force=True)
 
     def _handle_settings_save_error(self, error: Exception) -> None:
         self._save_pending = False
         logger.warning("保存并重启设置失败: %s", error)
-        self.save_restart_button.setText(t("gui.saveAndRestart"))
+        self.save_restart_button.setText(button_text("gui.saveAndRestart"))
         self.upload_error_label.setText(t("gui.settingsSaveFailed"))
         self._set_settings_controls_enabled(True)
 

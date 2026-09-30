@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from lanimals.gui.i18n import t
+from lanimals.gui.i18n import button_text, t
 from lanimals.gui.qt_theme import QtTheme
 
 
@@ -137,6 +137,8 @@ class _BaseCard(QFrame):
     def _title(self, text: str) -> QLabel:
         label = QLabel(text, self)
         label.setFont(QFont("Microsoft YaHei UI", 14, QFont.Weight.DemiBold))
+        label.setWordWrap(True)
+        self.title_label = label
         return label
 
 
@@ -177,10 +179,10 @@ class PasswordDialog(_BaseCard):
 
         actions = QHBoxLayout()
         actions.setSpacing(8)
-        self.cancel_button = QPushButton(t("gui.cancel"), self)
+        self.cancel_button = QPushButton(button_text("gui.cancel"), self)
         self.cancel_button.setStyleSheet(_button_style(theme, theme.secondary_button, theme.secondary_hover, theme.secondary_text))
         self.cancel_button.clicked.connect(self.cancelled.emit)
-        self.confirm_button = QPushButton(t("gui.confirm"), self)
+        self.confirm_button = QPushButton(button_text("gui.confirm"), self)
         self.confirm_button.setStyleSheet(_button_style(theme, theme.accent, theme.accent_hover, "#ffffff"))
         self.confirm_button.clicked.connect(self._submit)
         actions.addWidget(self.cancel_button)
@@ -246,12 +248,12 @@ class ClearDataDialog(_BaseCard):
 
         actions = QHBoxLayout()
         actions.setSpacing(8)
-        self.cancel_button = QPushButton(t("gui.cancel"), self)
+        self.cancel_button = QPushButton(button_text("gui.cancel"), self)
         self.cancel_button.setStyleSheet(
             _button_style(theme, theme.secondary_button, theme.secondary_hover, theme.secondary_text)
         )
         self.cancel_button.clicked.connect(self.cancelled.emit)
-        self.confirm_button = QPushButton(t("gui.confirm"), self)
+        self.confirm_button = QPushButton(button_text("gui.confirm"), self)
         self.confirm_button.setStyleSheet(_button_style(theme, theme.danger, theme.danger_hover, "#ffffff"))
         self.confirm_button.clicked.connect(self._submit)
         actions.addWidget(self.cancel_button)

@@ -118,3 +118,8 @@ def t(key_path: str, default: str = "", **kwargs: Any) -> str:
         except Exception:
             return result
     return str(result)
+
+
+def button_text(key_path: str, default: str = "", **kwargs: Any) -> str:
+    """供 Qt 按钮使用的翻译文本：转义 &，避免被当作键盘助记符吞掉。"""
+    return t(key_path, default, **kwargs).replace("&", "&&")

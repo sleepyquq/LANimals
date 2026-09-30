@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QTimer, Qt, Signal, Slot
-from PySide6.QtGui import QCloseEvent, QIcon, QShowEvent
+from PySide6.QtGui import QCloseEvent, QColor, QIcon, QPainter, QPaintEvent, QShowEvent
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QVBoxLayout, QWidget
 
 from lanimals.gui.controller import ServerController
@@ -448,6 +448,13 @@ class LANimalsApp(QMainWindow):
             return
         event.ignore()
         self.hide_to_tray()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802 - Qt API 命名
+        # WA_OpaquePaintEvent 要求自行铺满整个窗口；否则外壳圆角外侧会残留未初始化像素。
+        # Windows 11 由 DWM 裁出原生圆角，其他系统则显示为背景色直角。
+        painter = QPainter(self)
+        painter.fillRect(event.rect(), QColor(self.theme.background))
+        painter.end()
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 - Qt API 命名
         super().showEvent(event)
