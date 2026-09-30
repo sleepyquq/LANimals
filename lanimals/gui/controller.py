@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import sys
 import threading
@@ -73,6 +74,9 @@ class ServerController:
         self.join_url: str = f"http://127.0.0.1:{self.port}/"
         self.ip_url: str = self.join_url
         self.mdns_available: bool = False
+        # 上次确认 lanimals.local 正确解析到的本机地址；地址不变时启动即可显示域名。
+        self._mdns_cache_path = self.data_dir / ".mdns_cache.json"
+        self._mdns_verified_host: str | None = self._load_mdns_cache()
         self.status_listeners: list[Callable[[str, str | None], None]] = []
 
         if self.has_config():
@@ -227,8 +231,56 @@ class ServerController:
             self.bind_host = "127.0.0.1"
 
         self.ip_url = f"http://{self.bind_host}:{config_port}/"
-        if not self.mdns_available:
-            self.join_url = self.ip_url
+        # 同一地址已确认过域名时乐观显示 lanimals.local，后台重新注册并验证，失败再退回 IP。
+        self.mdns_available = self._mdns_verified_host == self.bind_host
+        self.join_url = self._mdns_url(config_port) if self.mdns_available else self.ip_url
+
+    @staticmethod
+    def _mdns_url(port: int) -> str:
+        return f"http://lanimals.local:{port}/"
+
+    def _load_mdns_cache(self) -> str | None:
+        try:
+            address = json.loads(self._mdns_cache_path.read_text(encoding="utf-8")).get("address")
+        except (OSError, ValueError, AttributeError):
+            return None
+        return address if isinstance(address, str) and is_private_lan_ipv4(address) else None
+
+    def _remember_mdns_host(self, address: str | None) -> None:
+        """调用方必须持有 _lock。缓存只是加速提示，写入失败不影响服务。"""
+        self._mdns_verified_host = address
+        try:
+            if address is None:
+                self._mdns_cache_path.unlink(missing_ok=True)
+            else:
+                self._mdns_cache_path.write_text(json.dumps({"address": address}), encoding="utf-8")
+        except OSError as error:
+            logger.debug("更新 mDNS 缓存失败: %s", error)
+
+    def _advertise_and_verify_mdns(self, bind_host: str, port: int) -> None:
+        """注册 lanimals.local 并确认系统解析结果；只在显示的地址真正变化时通知界面。"""
+        verified = False
+        try:
+            advertisement = advertise_mdns(bind_host, port)
+            with self._lock:
+                if self._stop_requested.is_set():
+                    advertisement.close()
+                    return
+                self._advertisement = advertisement
+            verified = mdns_name_matches(bind_host)
+        except Exception as error:
+            logger.debug("异步 mDNS 探测或注册失败: %s", error)
+
+        with self._lock:
+            if self._stop_requested.is_set() or self.bind_host != bind_host:
+                return
+            previous_url = self.join_url
+            self._remember_mdns_host(bind_host if verified else None)
+            self.mdns_available = verified
+            self.join_url = self._mdns_url(port) if verified else self.ip_url
+            changed = self.join_url != previous_url
+        if changed:
+            self._notify_status("updated")
 
     def start(self) -> None:
         """非阻塞启动后台服务，mDNS 在独立线程后台探测。"""
@@ -317,25 +369,12 @@ class ServerController:
 
         # 启动独立 mDNS 广播与解析探测线程（绝不阻塞主界面）。
         if should_advertise:
-            def async_mdns_setup():
-                try:
-                    ad = advertise_mdns(bind_host, target_port)
-                    with self._lock:
-                        if self._stop_requested.is_set():
-                            ad.close()
-                            return
-                        self._advertisement = ad
-                    if mdns_name_matches(bind_host):
-                        with self._lock:
-                            if self._stop_requested.is_set():
-                                return
-                            self.join_url = f"http://lanimals.local:{target_port}/"
-                            self.mdns_available = True
-                        self._notify_status("updated")
-                except Exception as error:
-                    logger.debug("异步 mDNS 探测或注册失败: %s", error)
-
-            threading.Thread(target=async_mdns_setup, daemon=True, name="mdns-setup").start()
+            threading.Thread(
+                target=self._advertise_and_verify_mdns,
+                args=(bind_host, target_port),
+                daemon=True,
+                name="mdns-setup",
+            ).start()
 
         with self._lock:
             still_starting = self._server_thread is thread and self.is_running

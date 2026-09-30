@@ -119,6 +119,8 @@ class LANimalsApp(QMainWindow):
         self._set_windows_app_identity()
 
         self.controller = ServerController(data_dir=resolved_data_dir)
+        # 已有配置时服务会在窗口显示后立即启动；这段时间主页显示“启动中”而不是“已停止”。
+        self._service_starting = self.controller.has_config()
         self.controller.add_status_listener(self._on_server_status_changed)
 
         self._build_ui()
@@ -256,13 +258,34 @@ class LANimalsApp(QMainWindow):
             join_url=self.controller.join_url,
             is_running=self.controller.is_running,
             local_only=self.controller.local_only,
+            starting=self._service_starting and not self.controller.is_running,
         )
+
+    def _start_service(self) -> None:
+        self._service_starting = True
+        self._update_main_view()
+        self.run_controller_action(
+            self.controller.start,
+            on_success=lambda _result: self._on_start_finished(),
+            on_error=self._on_start_failed,
+        )
+
+    def _on_start_finished(self) -> None:
+        self._service_starting = False
+        self._update_main_view()
+
+    def _on_start_failed(self, error: Exception) -> None:
+        logger.warning("启动后台服务失败: %s", error)
+        self._service_starting = False
+        self._update_main_view()
 
     def _check_first_launch_and_start(self) -> None:
         if not self.controller.has_config():
+            self._service_starting = False
+            self._update_main_view()
             self._show_initial_password_dialog()
             return
-        self.run_controller_action(self.controller.start)
+        self._start_service()
 
     def _present_modal(self, card: QWidget) -> InWindowModalOverlay:
         """在当前主窗口内显示卡片，不创建额外的原生窗口。"""
@@ -308,7 +331,7 @@ class LANimalsApp(QMainWindow):
 
     def _start_after_initial_password(self, overlay: InWindowModalOverlay) -> None:
         self._dismiss_modal(overlay)
-        self.run_controller_action(self.controller.start)
+        self._start_service()
 
     def show_change_password_dialog(self) -> None:
         """从设置页打开主窗口内的改密码卡片。"""
@@ -455,7 +478,7 @@ class LANimalsApp(QMainWindow):
         if self.controller.is_running:
             self.run_controller_action(self.controller.stop)
         else:
-            self.run_controller_action(self.controller.start)
+            self._start_service()
 
     def quit_app(self) -> None:
         self.quit_requested.emit()

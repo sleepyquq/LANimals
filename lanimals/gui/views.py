@@ -174,12 +174,15 @@ class MainView(QWidget):
                 self.link_label.setStyleSheet(f"color: {self.theme.link};")
         return super().eventFilter(watched, event)
 
-    def update_data(self, join_url: str, is_running: bool, local_only: bool = False) -> None:
+    def update_data(
+        self, join_url: str, is_running: bool, local_only: bool = False, *, starting: bool = False
+    ) -> None:
         self._current_url = join_url
         if not self._lan_pending:
             self.lan_switch.set_state(not local_only, animated=False, emit=False)
         self.link_label.setText(join_url or "http://127.0.0.1:8787/")
-        if is_running and join_url:
+        if join_url and (is_running or starting):
+            # 服务仍在后台启动时地址已确定，先显示二维码，不必等 Uvicorn 就绪。
             self._render_qr_code(join_url)
         elif self._lan_pending:
             # 拨杆触发的重启会先停后启，保留原二维码，避免瞬间闪现“已停止”。
