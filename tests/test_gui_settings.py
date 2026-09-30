@@ -119,3 +119,17 @@ def test_invalid_upload_size_is_reported_without_saving(qt_application: QApplica
 
     assert app._pending is None
     assert view.upload_error_label.text() == t("gui.maxUploadSizeInvalid")
+
+
+def test_save_button_is_compact_and_centered(qt_application: QApplication) -> None:
+    app = _QueuedApp()
+    view = SettingsView(app, current_theme())
+    view.resize(340, 394)
+    view.show()
+    qt_application.processEvents()
+
+    button = view.save_restart_button
+    center = button.geometry().center().x()
+    assert button.width() < view.width() * 0.6
+    assert abs(center - view.width() / 2) <= 2
+    view.hide()

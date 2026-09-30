@@ -362,6 +362,7 @@ class SettingsView(QWidget):
         self.save_restart_button.setStyleSheet(
             _button_style(self.theme, self.theme.accent, self.theme.accent_hover, "#ffffff")
             + f"""
+            QPushButton {{ padding: 0 28px; }}
             QPushButton:disabled {{
                 background: {self.theme.secondary_button};
                 color: {self.theme.text_subtle};
@@ -369,7 +370,8 @@ class SettingsView(QWidget):
             """
         )
         self.save_restart_button.clicked.connect(self._on_save_settings)
-        layout.addWidget(self.save_restart_button)
+        # 按文字宽度收紧并居中，与下方居中的清除按钮对齐。
+        layout.addWidget(self.save_restart_button, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addSpacing(6)
 
         # 危险操作弱化为文字按钮，不再用大面积红色抢占页面。
