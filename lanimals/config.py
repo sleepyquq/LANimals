@@ -25,6 +25,8 @@ class Config:
     password_hash: str
     gui_local_only: bool = False
     gui_selected_adapter: str | None = None
+    # 桌面端是否广播并在主页展示固定域名 lanimals.local；旧配置缺省为启用。
+    gui_use_domain: bool = True
 
 
 def parse_size(value: str) -> int:
@@ -101,6 +103,7 @@ def load_config(data_dir: Path) -> Config:
         password_hash=str(raw["password_hash"]),
         gui_local_only=raw.get("gui_local_only") is True,
         gui_selected_adapter=selected_adapter,
+        gui_use_domain=raw.get("gui_use_domain") is not False,
     )
 
 
@@ -114,6 +117,7 @@ def update_max_upload_size(data_dir: Path, value: str) -> Config:
         password_hash=current.password_hash,
         gui_local_only=current.gui_local_only,
         gui_selected_adapter=current.gui_selected_adapter,
+        gui_use_domain=current.gui_use_domain,
     )
     _write_config(Path(data_dir), updated)
     return updated
@@ -129,6 +133,7 @@ def update_password(data_dir: Path, password: str) -> Config:
         password_hash=hash_password(password),
         gui_local_only=current.gui_local_only,
         gui_selected_adapter=current.gui_selected_adapter,
+        gui_use_domain=current.gui_use_domain,
     )
     _write_config(Path(data_dir), updated)
     return updated
@@ -150,6 +155,7 @@ def update_gui_network_preferences(
         password_hash=current.password_hash,
         gui_local_only=local_only,
         gui_selected_adapter=selected_adapter,
+        gui_use_domain=current.gui_use_domain,
     )
     _write_config(Path(data_dir), updated)
     return updated
@@ -161,6 +167,7 @@ def update_gui_settings(
     local_only: bool,
     selected_adapter: str | None,
     max_upload_size: str,
+    use_domain: bool | None = None,
 ) -> Config:
     """原子保存设置页的网络偏好与上传上限，供一次“保存并重启”使用。"""
     current = load_config(data_dir)
@@ -172,6 +179,7 @@ def update_gui_settings(
         password_hash=current.password_hash,
         gui_local_only=local_only,
         gui_selected_adapter=selected_adapter,
+        gui_use_domain=current.gui_use_domain if use_domain is None else use_domain,
     )
     _write_config(Path(data_dir), updated)
     return updated
@@ -191,6 +199,7 @@ def _write_config(data_dir: Path, config: Config) -> None:
         f'max_upload_size = "{config.max_upload_size}"\n'
         f'password_hash = "{config.password_hash}"\n'
         f"gui_local_only = {'true' if config.gui_local_only else 'false'}\n"
+        f"gui_use_domain = {'true' if config.gui_use_domain else 'false'}\n"
         f"{selected_adapter_line}"
     )
     temporary.write_text(content, encoding="utf-8")
