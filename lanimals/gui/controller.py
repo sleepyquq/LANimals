@@ -69,6 +69,8 @@ class ServerController:
         self.is_running = False
         self.local_only = False
         self.selected_adapter: str | None = None
+        # 关闭后主页只展示 IP，并且不再广播 lanimals.local。
+        self.use_domain = True
         self.bind_host: str = "127.0.0.1"
         self.port: int = 8787
         self.join_url: str = f"http://127.0.0.1:{self.port}/"
@@ -83,6 +85,7 @@ class ServerController:
             config = load_config(self.data_dir)
             self.local_only = config.gui_local_only
             self.selected_adapter = config.gui_selected_adapter
+            self.use_domain = config.gui_use_domain
 
         # 快速计算 IP 目标（主线程 0 阻塞）
         self._update_network_targets_fast()
@@ -133,6 +136,7 @@ class ServerController:
         local_only: bool,
         adapter_name: str | None,
         max_upload_size: str,
+        use_domain: bool | None = None,
     ) -> str:
         """一次保存设置页的所有常规选项，并且只重启服务一次。"""
         with self._lock:
@@ -143,9 +147,11 @@ class ServerController:
                 local_only=local_only,
                 selected_adapter=adapter_name,
                 max_upload_size=max_upload_size,
+                use_domain=use_domain,
             )
             self.local_only = local_only
             self.selected_adapter = adapter_name
+            self.use_domain = updated.gui_use_domain
             was_running = self.is_running
 
         if was_running:
@@ -232,7 +238,7 @@ class ServerController:
 
         self.ip_url = f"http://{self.bind_host}:{config_port}/"
         # 同一地址已确认过域名时乐观显示 lanimals.local，后台重新注册并验证，失败再退回 IP。
-        self.mdns_available = self._mdns_verified_host == self.bind_host
+        self.mdns_available = self.use_domain and self._mdns_verified_host == self.bind_host
         self.join_url = self._mdns_url(config_port) if self.mdns_available else self.ip_url
 
     @staticmethod
@@ -260,6 +266,9 @@ class ServerController:
     def _advertise_and_verify_mdns(self, bind_host: str, port: int) -> None:
         """注册 lanimals.local 并确认系统解析结果；只在显示的地址真正变化时通知界面。"""
         verified = False
+        with self._lock:
+            if not self.use_domain:
+                return
         try:
             advertisement = advertise_mdns(bind_host, port)
             with self._lock:
@@ -272,7 +281,7 @@ class ServerController:
             logger.debug("异步 mDNS 探测或注册失败: %s", error)
 
         with self._lock:
-            if self._stop_requested.is_set() or self.bind_host != bind_host:
+            if self._stop_requested.is_set() or self.bind_host != bind_host or not self.use_domain:
                 return
             previous_url = self.join_url
             self._remember_mdns_host(bind_host if verified else None)
@@ -310,7 +319,7 @@ class ServerController:
             target_port = self.port
             data_dir = self.data_dir
             max_upload = config.max_upload_bytes
-            should_advertise = not self.local_only and is_private_lan_ipv4(bind_host)
+            should_advertise = self.use_domain and not self.local_only and is_private_lan_ipv4(bind_host)
 
             app = create_app(
                 data_dir=data_dir,

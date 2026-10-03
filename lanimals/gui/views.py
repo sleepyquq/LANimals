@@ -6,7 +6,7 @@ import logging
 import webbrowser
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QFont, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -298,6 +298,21 @@ class SettingsView(QWidget):
         )
         self.adapter_menu.currentTextChanged.connect(self._on_adapter_selected)
         self._add_row(net_rows, net_card, t("gui.networkAdapter"), self.adapter_menu, stretch_control=True)
+
+        # 固定域名：开启时主页展示 lanimals.local，IP 作为备用地址显示在本行标题下。
+        self.domain_switch = AnimatedToggle(self.theme, net_card)
+        self.domain_switch.setAccessibleName(t("gui.fixedDomain"))
+        self.domain_switch.toggled.connect(self._on_domain_toggled)
+        self.backup_ip_label = ClickableLabel(net_card)
+        self.backup_ip_label.setStyleSheet(f"color: {self.theme.text_muted}; font-size: 10px;")
+        self.backup_ip_label.clicked.connect(self._on_backup_ip_click)
+        self._add_row(
+            net_rows,
+            net_card,
+            t("gui.fixedDomain"),
+            self.domain_switch,
+            subtitle=self.backup_ip_label,
+        )
         layout.addWidget(net_card)
         layout.addSpacing(14)
 
@@ -420,6 +435,7 @@ class SettingsView(QWidget):
         control: QWidget,
         *,
         stretch_control: bool = False,
+        subtitle: QWidget | None = None,
     ) -> None:
         """设置项统一为“左侧名称、右侧控件”的单行，行间以细分隔线区分。"""
         if rows.count():
@@ -432,7 +448,17 @@ class SettingsView(QWidget):
         row_layout = QHBoxLayout(row)
         row_layout.setContentsMargins(14, 0, 10, 0)
         row_layout.setSpacing(12)
-        row_layout.addWidget(_settings_field_label(label_text, row, self.theme))
+        if subtitle is None:
+            row_layout.addWidget(_settings_field_label(label_text, row, self.theme))
+        else:
+            text_column = QVBoxLayout()
+            text_column.setContentsMargins(0, 0, 0, 0)
+            text_column.setSpacing(1)
+            text_column.addStretch(1)
+            text_column.addWidget(_settings_field_label(label_text, row, self.theme))
+            text_column.addWidget(subtitle)
+            text_column.addStretch(1)
+            row_layout.addLayout(text_column)
         if stretch_control:
             row_layout.addWidget(control, 1)
         else:
@@ -471,6 +497,8 @@ class SettingsView(QWidget):
             )
             self.adapter_menu.setCurrentText(selected)
             self.adapter_menu.blockSignals(False)
+            self.domain_switch.set_state(self.app.controller.use_domain, animated=False, emit=False)
+            self._update_backup_ip_label()
             self._has_unsaved_changes = False
             self._set_settings_controls_enabled(not self._save_pending)
         finally:
@@ -480,6 +508,24 @@ class SettingsView(QWidget):
         if self._refreshing or self._save_pending:
             return
         self._mark_settings_dirty()
+
+    def _on_domain_toggled(self, _checked: bool) -> None:
+        if self._refreshing or self._save_pending:
+            return
+        self._mark_settings_dirty()
+
+    def _update_backup_ip_label(self) -> None:
+        """只在启用固定域名时显示备用 IP；关闭时主页本身就展示 IP。"""
+        address = self.app.controller.ip_url.removeprefix("http://").rstrip("/")
+        self.backup_ip_label.setText(t("gui.backupIp", address=address))
+        self.backup_ip_label.setHidden(not self.app.controller.use_domain)
+
+    def _on_backup_ip_click(self) -> None:
+        clipboard = QApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(self.app.controller.ip_url)
+        self.backup_ip_label.setText(t("gui.copied"))
+        QTimer.singleShot(1500, self._update_backup_ip_label)
 
     def _on_setting_edited(self, _value: str) -> None:
         if self._refreshing or self._save_pending:
@@ -494,6 +540,7 @@ class SettingsView(QWidget):
     def _set_settings_controls_enabled(self, enabled: bool) -> None:
         """保存/重启期间冻结所有会影响同一份主机配置的字段；没有改动时不可保存。"""
         self.adapter_menu.setEnabled(enabled and not self.app.controller.local_only)
+        self.domain_switch.setEnabled(enabled)
         self.upload_entry.setEnabled(enabled)
         self.save_restart_button.setEnabled(enabled and self._has_unsaved_changes)
 
@@ -514,11 +561,13 @@ class SettingsView(QWidget):
         self._set_settings_controls_enabled(False)
         self.save_restart_button.setText(button_text("gui.savingAndRestarting"))
         adapter_name = self._adapter_map.get(self.adapter_menu.currentText())
+        use_domain = self.domain_switch.isChecked()
         self.app.run_controller_action(
             lambda: self.app.controller.apply_settings(
                 local_only=self.app.controller.local_only,
                 adapter_name=adapter_name,
                 max_upload_size=f"{number:g}GB",
+                use_domain=use_domain,
             ),
             on_success=self._finish_settings_save,
             on_error=self._handle_settings_save_error,

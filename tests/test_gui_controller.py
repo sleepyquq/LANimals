@@ -193,3 +193,52 @@ def test_clearing_data_stops_and_restarts_an_active_server(
     ctrl.clear_all_data()
 
     assert calls == ["stop", "clear", "start"]
+
+
+def test_fixed_domain_defaults_on_for_existing_configs(temp_data_dir: Path) -> None:
+    """旧配置没有该字段时保持原行为：已验证过域名就在主页展示 lanimals.local。"""
+    create_config(temp_data_dir, password="pwd-test")
+    config_path = temp_data_dir / "config.toml"
+    config_path.write_text(
+        "\n".join(line for line in config_path.read_text(encoding="utf-8").splitlines() if "gui_use_domain" not in line),
+        encoding="utf-8",
+    )
+    (temp_data_dir / ".mdns_cache.json").write_text('{"address": "192.168.1.100"}', encoding="utf-8")
+
+    ctrl = ServerController(data_dir=temp_data_dir)
+
+    assert load_config(temp_data_dir).gui_use_domain is True
+    assert ctrl.use_domain is True
+    assert ctrl.join_url == "http://lanimals.local:8787/"
+    assert ctrl.ip_url == "http://192.168.1.100:8787/"
+
+
+def test_disabling_fixed_domain_shows_ip_and_skips_mdns(
+    temp_data_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """关闭固定域名后主页只展示 IP，也不再广播 lanimals.local。"""
+    create_config(temp_data_dir, password="pwd-test")
+    (temp_data_dir / ".mdns_cache.json").write_text('{"address": "192.168.1.100"}', encoding="utf-8")
+    ctrl = ServerController(data_dir=temp_data_dir)
+    ctrl.is_running = True
+    monkeypatch.setattr(ctrl, "restart", lambda: None)
+
+    ctrl.apply_settings(local_only=False, adapter_name=None, max_upload_size="2GB", use_domain=False)
+
+    assert load_config(temp_data_dir).gui_use_domain is False
+    assert ctrl.use_domain is False
+    ctrl._update_network_targets_fast()
+    assert ctrl.join_url == "http://192.168.1.100:8787/"
+    assert ctrl.mdns_available is False
+
+    advertised: list[str] = []
+    monkeypatch.setattr(
+        "lanimals.gui.controller.advertise_mdns", lambda host, _port: advertised.append(host)
+    )
+    ctrl._advertise_and_verify_mdns("192.168.1.100", 8787)
+    assert advertised == []
+    assert ctrl.join_url == "http://192.168.1.100:8787/"
+
+    # 重新打开桌面端后仍记住该选择。
+    assert ServerController(data_dir=temp_data_dir).join_url == "http://192.168.1.100:8787/"
