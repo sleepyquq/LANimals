@@ -76,6 +76,8 @@
     "back": "Back",
     "lanAccess": "LAN Access",
     "networkAdapter": "Network Adapter",
+    "fixedDomain": "Fixed domain",
+    "backupIp": "Backup IP: {address}",
     "autoDetect": "Auto detect",
     "maxUploadSize": "Max file size",
     "maxUploadSizeInvalid": "Please enter a number between 0.1 and 512",

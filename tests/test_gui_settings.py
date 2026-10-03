@@ -19,6 +19,8 @@ from lanimals.gui.views import SettingsView
 class _FakeController:
     local_only = False
     selected_adapter: str | None = None
+    use_domain = True
+    ip_url = "http://192.168.1.20:8787/"
 
     def __init__(self) -> None:
         self.max_upload_size = "2GB"
@@ -27,8 +29,16 @@ class _FakeController:
     def get_max_upload_size(self) -> str:
         return self.max_upload_size
 
-    def apply_settings(self, *, local_only: bool, adapter_name: str | None, max_upload_size: str) -> str:
+    def apply_settings(
+        self,
+        *,
+        local_only: bool,
+        adapter_name: str | None,
+        max_upload_size: str,
+        use_domain: bool = True,
+    ) -> str:
         self.applied_settings.append((local_only, adapter_name, max_upload_size))
+        self.use_domain = use_domain
         self.local_only = local_only
         self.selected_adapter = adapter_name
         self.max_upload_size = max_upload_size
@@ -139,3 +149,24 @@ def test_bottom_buttons_are_compact_and_centered(qt_application: QApplication, b
         assert abs(center - view.width() / 2) <= 2
     finally:
         view.hide()
+
+
+def test_fixed_domain_toggle_is_staged_and_shows_backup_ip(qt_application: QApplication) -> None:
+    app = _QueuedApp()
+    view = SettingsView(app, current_theme())
+    view.refresh_settings()
+
+    assert view.domain_switch.isChecked()
+    # 启用固定域名时，IP 作为备用地址显示在该设置下。
+    assert not view.backup_ip_label.isHidden()
+    assert view.backup_ip_label.text().endswith("192.168.1.20:8787")
+
+    view.domain_switch.click()
+    assert view.save_restart_button.isEnabled()
+    view._on_save_settings()
+    app.finish_action()
+
+    assert app.controller.applied_settings == [(False, None, "2GB")]
+    assert app.controller.use_domain is False
+    assert not view.domain_switch.isChecked()
+    assert view.backup_ip_label.isHidden()

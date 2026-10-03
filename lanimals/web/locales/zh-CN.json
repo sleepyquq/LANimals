@@ -76,6 +76,8 @@
     "back": "返回",
     "lanAccess": "局域网访问",
     "networkAdapter": "局域网网卡",
+    "fixedDomain": "固定域名",
+    "backupIp": "备用 IP：{address}",
     "autoDetect": "自动选择",
     "maxUploadSize": "单文件上传上限",
     "maxUploadSizeInvalid": "请输入 0.1 ~ 512 之间的数字",
