@@ -403,13 +403,15 @@ class SettingsView(QWidget):
                 border-radius: 8px;
                 color: {self.theme.danger};
                 min-height: 30px;
+                padding: 0 14px;
                 font-size: 12px;
             }}
             QPushButton:hover {{ background: {self.theme.secondary_button}; }}
             """
         )
         self.clear_button.clicked.connect(self._on_clear_data)
-        layout.addWidget(self.clear_button)
+        # 与上方按钮一样按文字宽度居中，悬停底色只覆盖文字区域。
+        layout.addWidget(self.clear_button, alignment=Qt.AlignmentFlag.AlignHCenter)
 
     def _section_caption(self, text: str) -> QLabel:
         caption = QLabel(text, self)

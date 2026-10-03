@@ -131,18 +131,24 @@ def test_invalid_upload_size_is_reported_without_saving(qt_application: QApplica
     assert view.upload_error_label.text() == t("gui.maxUploadSizeInvalid")
 
 
-def test_save_button_is_compact_and_centered(qt_application: QApplication) -> None:
+@pytest.mark.parametrize("button_name", ["save_restart_button", "clear_button"])
+def test_bottom_buttons_are_compact_and_centered(qt_application: QApplication, button_name: str) -> None:
+    """底部按钮按文字宽度收紧并居中；清除按钮的悬停底色也不能横跨整行。"""
     app = _QueuedApp()
     view = SettingsView(app, current_theme())
     view.resize(340, 394)
     view.show()
-    qt_application.processEvents()
+    try:
+        qt_application.processEvents()
 
-    button = view.save_restart_button
-    center = button.geometry().center().x()
-    assert button.width() < view.width() * 0.6
-    assert abs(center - view.width() / 2) <= 2
-    view.hide()
+        button = getattr(view, button_name)
+        center = button.geometry().center().x()
+        # 与字体无关：按钮宽度等于文字所需宽度（没有被拉伸到整行），且水平居中。
+        # CI 的 Windows 镜像缺少字体，按页面宽度比例断言会因字宽不同而误报。
+        assert button.width() == button.sizeHint().width()
+        assert abs(center - view.width() / 2) <= 2
+    finally:
+        view.hide()
 
 
 def test_fixed_domain_toggle_is_staged_and_shows_backup_ip(qt_application: QApplication) -> None:
