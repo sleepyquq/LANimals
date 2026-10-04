@@ -79,6 +79,8 @@
     "networkAdapter": "局域网网卡",
     "fixedDomain": "固定域名",
     "backupIp": "备用 IP：{address}",
+    "https": "加密连接 (HTTPS)",
+    "httpsHint": "首次打开需在浏览器确认证书",
     "autoDetect": "自动选择",
     "maxUploadSize": "单文件上传上限",
     "maxUploadSizeInvalid": "请输入 0.1 ~ 512 之间的数字",

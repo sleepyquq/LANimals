@@ -79,6 +79,8 @@
     "networkAdapter": "Network Adapter",
     "fixedDomain": "Fixed domain",
     "backupIp": "Backup IP: {address}",
+    "https": "Encrypted (HTTPS)",
+    "httpsHint": "Browsers ask once to accept it",
     "autoDetect": "Auto detect",
     "maxUploadSize": "Max file size",
     "maxUploadSizeInvalid": "Please enter a number between 0.1 and 512",
