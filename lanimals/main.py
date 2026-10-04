@@ -6,6 +6,8 @@ import asyncio
 import hmac
 import os
 import secrets
+import shutil
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -18,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from lanimals.config import verify_password
 from lanimals.identity import DeviceRegistry
-from lanimals.limits import UploadSizeLimitMiddleware
+from lanimals.limits import UploadSizeLimitMiddleware, storage_reserve_bytes
 from lanimals.realtime import RealtimeHub
 from lanimals.store import ChatStore
 from lanimals.throttle import LoginThrottle
@@ -86,6 +88,7 @@ def create_app(
     password_hash_provider: Callable[[], str] | None = None,
     max_upload_bytes: int = 2 * 1024**3,
     clock: Callable[[], float] = time.time,
+    disk_usage: Callable[[Path], tuple[int, int, int]] = shutil.disk_usage,
 ) -> FastAPI:
     if chat_password is None and password_hash is None and password_hash_provider is None:
         raise ValueError("chat_password, password_hash, or password_hash_provider is required")
@@ -99,8 +102,17 @@ def create_app(
     hub = RealtimeHub()
     active_uploads: dict[str, tuple[str, asyncio.Event]] = {}
     app = FastAPI(title="LANimals", docs_url=None, redoc_url=None, openapi_url=None)
+    def storage_has_room(incoming_bytes: int) -> bool:
+        # 多部分表单先落到系统临时目录，再复制到 uploads；两处都要留足余量。
+        for location in {uploads_dir, Path(tempfile.gettempdir())}:
+            total, _used, free = disk_usage(location)
+            if free - incoming_bytes < storage_reserve_bytes(total):
+                return False
+        return True
+
     app.add_middleware(
         UploadSizeLimitMiddleware,
+        storage_has_room=storage_has_room,
         max_file_bytes=max_upload_bytes,
         session_is_valid=lambda token: registry.session_identity(token) is not None,
     )

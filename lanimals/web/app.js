@@ -1303,7 +1303,9 @@ function uploadCombinedMessage(body, files) {
       const error = new Error(
         request.status === 413
           ? t("upload.tooLarge")
-          : t("upload.failed", { status: request.status }),
+          : request.status === 507
+            ? t("upload.diskFull")
+            : t("upload.failed", { status: request.status }),
       );
       error.status = request.status;
       finishRequest();

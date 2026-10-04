@@ -53,6 +53,7 @@
     "failed": "Upload failed ({status})",
     "networkError": "The connection was interrupted; the file was not sent",
     "tooLarge": "The attachments exceed the server size limit",
+    "diskFull": "The host is running out of disk space, so attachments are paused",
     "tooMany": "Each message can include up to {count} attachments",
     "readFailed": "Could not read {name}",
     "retry": "Retry",

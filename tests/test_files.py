@@ -293,3 +293,52 @@ def test_unauthenticated_upload_is_rejected_before_multipart_parsing(tmp_path):
     assert response.status_code == 401
     assert response.json()["detail"] == "请先登录后上传文件（请求未解析）"
     assert list((tmp_path / "uploads").glob("*")) == []
+
+
+def _fake_disk(free_bytes: int, total_bytes: int = 500 * 1024**3):
+    import shutil
+
+    def usage(_path):
+        return shutil._ntuple_diskusage(total_bytes, total_bytes - free_bytes, free_bytes)
+
+    return usage
+
+
+def test_uploads_are_refused_before_parsing_when_the_disk_is_nearly_full(tmp_path):
+    from lanimals.limits import storage_reserve_bytes
+
+    total = 500 * 1024**3
+    reserve = storage_reserve_bytes(total)
+    assert reserve == 10 * 1024**3
+    app = create_app(
+        data_dir=tmp_path,
+        chat_password="shared-secret",
+        disk_usage=_fake_disk(reserve + 1024, total),
+    )
+
+    with TestClient(app) as browser:
+        login(browser)
+        refused = browser.post("/api/files", files={"file": ("big.bin", b"x" * 4096, "application/octet-stream")})
+        accepted = browser.post("/api/files", files={"file": ("small.txt", b"hi", "text/plain")})
+        history = browser.get("/api/messages").json()
+
+    assert refused.status_code == 507
+    assert accepted.status_code == 201
+    assert [message["attachment"]["original_name"] for message in history] == ["small.txt"]
+    assert not any(path.name.endswith(".part") for path in (tmp_path / "uploads").iterdir())
+
+
+def test_text_messages_still_work_when_the_disk_is_nearly_full(tmp_path):
+    app = create_app(data_dir=tmp_path, chat_password="shared-secret", disk_usage=_fake_disk(0))
+
+    with TestClient(app) as browser:
+        login(browser)
+        assert browser.post("/api/files", files={"file": ("a.txt", b"a", "text/plain")}).status_code == 507
+        assert browser.post("/api/messages", json={"body": "still chatting"}).status_code == 201
+
+
+def test_storage_reserve_scales_down_for_small_disks():
+    from lanimals.limits import storage_reserve_bytes
+
+    assert storage_reserve_bytes(2 * 1024**4) == 10 * 1024**3
+    assert storage_reserve_bytes(32 * 1024**3) == int(3.2 * 1024**3)
