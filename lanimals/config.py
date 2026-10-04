@@ -27,6 +27,8 @@ class Config:
     gui_selected_adapter: str | None = None
     # 桌面端是否广播并在主页展示固定域名 lanimals.local；旧配置缺省为启用。
     gui_use_domain: bool = True
+    # 可选 HTTPS：使用本机生成的自签名证书加密局域网流量；默认关闭。
+    https: bool = False
 
 
 def parse_size(value: str) -> int:
@@ -39,9 +41,12 @@ def parse_size(value: str) -> int:
     return int(amount * _SIZE_MULTIPLIERS[match.group(2).upper()])
 
 
+MIN_PASSWORD_LENGTH = 8
+
+
 def hash_password(password: str) -> str:
-    if len(password) < 4:
-        raise ValueError("群聊密码至少需要 4 个字符")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"群聊密码至少需要 {MIN_PASSWORD_LENGTH} 个字符")
     salt = os.urandom(16)
     digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=2**14, r=8, p=1, dklen=32)
     return "scrypt$16384$8$1${}${}".format(
@@ -104,6 +109,7 @@ def load_config(data_dir: Path) -> Config:
         gui_local_only=raw.get("gui_local_only") is True,
         gui_selected_adapter=selected_adapter,
         gui_use_domain=raw.get("gui_use_domain") is not False,
+        https=raw.get("https") is True,
     )
 
 
@@ -118,6 +124,7 @@ def update_max_upload_size(data_dir: Path, value: str) -> Config:
         gui_local_only=current.gui_local_only,
         gui_selected_adapter=current.gui_selected_adapter,
         gui_use_domain=current.gui_use_domain,
+        https=current.https,
     )
     _write_config(Path(data_dir), updated)
     return updated
@@ -134,6 +141,7 @@ def update_password(data_dir: Path, password: str) -> Config:
         gui_local_only=current.gui_local_only,
         gui_selected_adapter=current.gui_selected_adapter,
         gui_use_domain=current.gui_use_domain,
+        https=current.https,
     )
     _write_config(Path(data_dir), updated)
     return updated
@@ -156,6 +164,7 @@ def update_gui_network_preferences(
         gui_local_only=local_only,
         gui_selected_adapter=selected_adapter,
         gui_use_domain=current.gui_use_domain,
+        https=current.https,
     )
     _write_config(Path(data_dir), updated)
     return updated
@@ -168,6 +177,7 @@ def update_gui_settings(
     selected_adapter: str | None,
     max_upload_size: str,
     use_domain: bool | None = None,
+    https: bool | None = None,
 ) -> Config:
     """原子保存设置页的网络偏好与上传上限，供一次“保存并重启”使用。"""
     current = load_config(data_dir)
@@ -180,6 +190,7 @@ def update_gui_settings(
         gui_local_only=local_only,
         gui_selected_adapter=selected_adapter,
         gui_use_domain=current.gui_use_domain if use_domain is None else use_domain,
+        https=current.https if https is None else https,
     )
     _write_config(Path(data_dir), updated)
     return updated
@@ -200,6 +211,7 @@ def _write_config(data_dir: Path, config: Config) -> None:
         f'password_hash = "{config.password_hash}"\n'
         f"gui_local_only = {'true' if config.gui_local_only else 'false'}\n"
         f"gui_use_domain = {'true' if config.gui_use_domain else 'false'}\n"
+        f"https = {'true' if config.https else 'false'}\n"
         f"{selected_adapter_line}"
     )
     temporary.write_text(content, encoding="utf-8")

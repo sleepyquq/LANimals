@@ -125,7 +125,7 @@ On Windows PowerShell, use:
 .\.venv\Scripts\python.exe -m lanimals gui
 ```
 
-The desktop app shows the join QR code and keeps local administration on the host. The LAN access switch next to the title applies immediately; the settings page holds adapter selection, upload limit, password rotation, and a guarded clear-data action. Settings are saved together and restart the local service once; destructive cleanup requires typing `DELETE ALL` in an in-window confirmation card.
+The desktop app shows the join QR code and keeps local administration on the host. The LAN access switch next to the title applies immediately; the settings page holds adapter selection, the fixed-domain and HTTPS switches, upload limit, password rotation, and a guarded clear-data action. Settings are saved together and restart the local service once; destructive cleanup requires typing `DELETE ALL` in an in-window confirmation card.
 
 ## Host management
 
@@ -187,8 +187,9 @@ All runtime data lives under `data/` by default (the packaged macOS app uses `~/
 
 ```text
 data/
-├── config.toml    # host, port, upload limit, and scrypt password hash
+├── config.toml    # host, port, upload limit, HTTPS switch, and scrypt password hash
 ├── chat.db        # identities, sessions, messages, and attachment metadata
+├── tls/           # self-signed certificate, created only when HTTPS is enabled
 └── uploads/       # uploaded file contents
 ```
 
@@ -196,11 +197,17 @@ Stop LANimals and copy the complete `data/` directory to make a consistent backu
 
 ## Security model
 
-LANimals is intended for a trusted home or office LAN. It uses ordinary HTTP by default, so it does not protect traffic from other untrusted devices on the same network and should not be exposed directly to the public Internet.
+LANimals is built for a home or office LAN. It uses plain HTTP by default, which is fine on a network where you trust every device. On a shared or less trusted network (for example a dorm, office, or café Wi‑Fi), turn on **Encrypted (HTTPS)** in the desktop settings page: the host creates a self-signed certificate, and messages, files, and login cookies are encrypted so other devices on the network cannot read them. Each device sees a one-time browser certificate warning and has to choose to continue. If a device that already accepted the certificate suddenly warns again while the host's network has not changed, do not continue: someone may be impersonating the host.
 
-Within that boundary, LANimals keeps several controls explicit:
+LANimals is still not meant to be exposed directly to the public Internet. It has one shared password and a self-signed certificate, and automatic binding only uses private LAN addresses.
 
-- room passwords are stored as scrypt hashes;
+LANimals keeps these controls explicit:
+
+- room passwords are stored as scrypt hashes, and new passwords need at least 8 characters;
+- after 5 wrong passwords, a device is locked out for 30 seconds, doubling with each further miss up to 15 minutes;
+- login sessions expire after 30 days, and devices keep their animal name when they sign in again;
+- the optional HTTPS mode encrypts all traffic, including WebSocket updates;
+- new uploads are refused while the host disk is nearly full (less than 10% free, at most 10 GB kept), and text messages keep working;
 - session and identity cookies are opaque and `HttpOnly`;
 - uploads are authenticated and size-checked before multipart parsing;
 - downloads require an authenticated session;
@@ -216,11 +223,13 @@ lanimals/
 ├── cli.py            # host-only administration
 ├── config.py         # TOML settings and password hashing
 ├── identity.py       # cookies, sessions, and animal names
-├── limits.py         # pre-parser upload guards
+├── limits.py         # pre-parser upload guards and disk-space reserve
 ├── main.py           # FastAPI routes and file handling
 ├── network.py        # LAN discovery, mDNS, and terminal QR code
 ├── realtime.py       # WebSocket fan-out
 ├── store.py          # SQLite persistence
+├── throttle.py       # failed-login lockout
+├── tls.py            # self-signed certificate for HTTPS mode
 ├── gui/              # PySide6 host-local desktop control panel
 └── web/              # native HTML, CSS, JavaScript, and locale files
 

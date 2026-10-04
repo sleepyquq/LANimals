@@ -13,6 +13,14 @@ class RequestTooLarge(Exception):
     pass
 
 
+_MAX_STORAGE_RESERVE_BYTES = 10 * 1024**3
+
+
+def storage_reserve_bytes(total_bytes: int) -> int:
+    """Free space uploads must leave behind: 10% of the disk, at most 10 GB."""
+    return min(_MAX_STORAGE_RESERVE_BYTES, total_bytes // 10)
+
+
 class UploadSizeLimitMiddleware:
     """Authenticate and bound raw uploads before Starlette creates temporary files."""
 
@@ -22,10 +30,12 @@ class UploadSizeLimitMiddleware:
         *,
         max_file_bytes: int,
         session_is_valid: Callable[[str], bool],
+        storage_has_room: Callable[[int], bool] = lambda _incoming: True,
         multipart_overhead_bytes: int = 64 * 1024,
     ) -> None:
         self.app = app
         self.session_is_valid = session_is_valid
+        self.storage_has_room = storage_has_room
         self.max_request_bytes = max_file_bytes + multipart_overhead_bytes
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -46,14 +56,27 @@ class UploadSizeLimitMiddleware:
             return
 
         content_length = headers.get(b"content-length")
+        incoming = 0
         if content_length:
             try:
-                if int(content_length) > self.max_request_bytes:
-                    await self._reject_too_large(scope, receive, send)
-                    return
+                incoming = int(content_length)
             except ValueError:
                 await self._reject_too_large(scope, receive, send)
                 return
+            if incoming > self.max_request_bytes:
+                await self._reject_too_large(scope, receive, send)
+                return
+
+        # 主机硬盘快满时拒绝新上传，避免反复上传把磁盘塞满；文字消息不受影响。
+        if not self.storage_has_room(incoming):
+            await self._respond(
+                scope,
+                receive,
+                send,
+                status_code=507,
+                detail="服务器磁盘空间不足，暂时无法接收新的附件",
+            )
+            return
 
         received = 0
 

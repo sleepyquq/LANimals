@@ -53,6 +53,7 @@
     "failed": "上传失败（{status}）",
     "networkError": "网络中断，文件未发送",
     "tooLarge": "附件总大小超过服务器允许的大小",
+    "diskFull": "主机硬盘空间不足，暂时不能发送附件",
     "tooMany": "每条消息最多发送 {count} 个附件",
     "readFailed": "无法读取 {name}",
     "retry": "重试",
@@ -61,6 +62,7 @@
   "errors": {
     "requestFailed": "请求失败（{status}）",
     "wrongPassword": "群聊密码不正确",
+    "tooManyAttempts": "密码错误次数过多，请稍后再试",
     "sessionExpired": "会话已失效，请重新登录",
     "sendFailed": "消息发送失败，请重试",
     "invalidResponse": "服务器响应格式异常，请重试"
@@ -78,6 +80,8 @@
     "networkAdapter": "局域网网卡",
     "fixedDomain": "固定域名",
     "backupIp": "备用 IP：{address}",
+    "https": "加密连接 (HTTPS)",
+    "httpsHint": "首次打开需在浏览器确认证书",
     "autoDetect": "自动选择",
     "maxUploadSize": "单文件上传上限",
     "maxUploadSizeInvalid": "请输入 0.1 ~ 512 之间的数字",
@@ -93,7 +97,7 @@
     "initPasswordTitle": "首次使用 - 设置群聊密码",
     "initPasswordHint": "请设置一个共享群聊密码，局域网内的设备凭此密码加入群聊：",
     "passwordEmpty": "密码不能为空",
-    "passwordTooShort": "密码至少需要 4 个字符",
+    "passwordTooShort": "密码至少需要 8 个字符",
     "clearData": "清除所有聊天记录与文件",
     "clearDataWarning": "此操作将永久删除所有聊天消息与上传文件，且不可恢复！",
     "clearConfirmPrompt": "请输入 DELETE ALL 确认清除：",

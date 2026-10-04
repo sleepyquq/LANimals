@@ -114,7 +114,9 @@ def _lan_ip() -> str:
     return discover_lan_ipv4().address
 
 
-def _print_join_information(bind_host: str, port: int, selection, mdns_available: bool) -> None:
+def _print_join_information(
+    bind_host: str, port: int, selection, mdns_available: bool, scheme: str = "http"
+) -> None:
     if selection is not None:
         if selection.adapter:
             print(f"已选择网卡: {selection.adapter} ({selection.address})")
@@ -126,8 +128,8 @@ def _print_join_information(bind_host: str, port: int, selection, mdns_available
             )
             print(f"其他可用地址: {alternatives}")
 
-    ip_url = f"http://{bind_host}:{port}/"
-    join_url = f"http://lanimals.local:{port}/" if mdns_available else ip_url
+    ip_url = f"{scheme}://{bind_host}:{port}/"
+    join_url = f"{scheme}://lanimals.local:{port}/" if mdns_available else ip_url
     print(f"推荐访问: {join_url}")
     if join_url != ip_url:
         print(f"备用地址: {ip_url}")
@@ -186,10 +188,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         if advertisement is not None and not mdns_available:
             print("lanimals.local 未解析到当前局域网地址，二维码将使用 IP。")
             print("若正在使用代理/TUN，请将 *.local 和局域网地址设为直连。")
-        _print_join_information(bind_host, config.port, selection, mdns_available)
+        ssl_options: dict[str, str] = {}
+        if config.https:
+            from lanimals.tls import ensure_certificate
+
+            cert_path, key_path = ensure_certificate(data_dir, bind_host)
+            ssl_options = {"ssl_certfile": str(cert_path), "ssl_keyfile": str(key_path)}
+        _print_join_information(
+            bind_host, config.port, selection, mdns_available, "https" if config.https else "http"
+        )
+        if config.https:
+            print("已启用 HTTPS（自签名证书），各设备首次打开时需在浏览器警告页选择继续访问。")
         print(f"数据目录: {data_dir}")
         try:
-            uvicorn.run(app, host=bind_host, port=config.port)
+            uvicorn.run(app, host=bind_host, port=config.port, **ssl_options)
         finally:
             if advertisement is not None:
                 advertisement.close()

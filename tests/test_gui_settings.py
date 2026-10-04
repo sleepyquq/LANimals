@@ -20,6 +20,7 @@ class _FakeController:
     local_only = False
     selected_adapter: str | None = None
     use_domain = True
+    https = False
     ip_url = "http://192.168.1.20:8787/"
 
     def __init__(self) -> None:
@@ -36,9 +37,11 @@ class _FakeController:
         adapter_name: str | None,
         max_upload_size: str,
         use_domain: bool = True,
+        https: bool = False,
     ) -> str:
         self.applied_settings.append((local_only, adapter_name, max_upload_size))
         self.use_domain = use_domain
+        self.https = https
         self.local_only = local_only
         self.selected_adapter = adapter_name
         self.max_upload_size = max_upload_size
@@ -170,3 +173,35 @@ def test_fixed_domain_toggle_is_staged_and_shows_backup_ip(qt_application: QAppl
     assert app.controller.use_domain is False
     assert not view.domain_switch.isChecked()
     assert view.backup_ip_label.isHidden()
+
+
+def test_https_toggle_is_staged_and_saved_with_other_settings(qt_application: QApplication) -> None:
+    app = _QueuedApp()
+    view = SettingsView(app, current_theme())
+    view.refresh_settings()
+
+    assert not view.https_switch.isChecked()
+    assert view.https_switch.accessibleName() == t("gui.https")
+    assert not view.save_restart_button.isEnabled()
+
+    view.https_switch.click()
+    assert view.save_restart_button.isEnabled()
+    assert app.controller.https is False
+    view._on_save_settings()
+    assert not view.https_switch.isEnabled()
+    app.finish_action()
+
+    assert app.controller.https is True
+    assert view.https_switch.isChecked()
+    assert view.https_switch.isEnabled()
+
+
+def test_backup_ip_hides_the_scheme_for_https(qt_application: QApplication) -> None:
+    app = _QueuedApp()
+    app.controller.https = True
+    app.controller.ip_url = "https://192.168.1.20:8787/"
+    view = SettingsView(app, current_theme())
+    view.refresh_settings()
+
+    assert view.backup_ip_label.text().endswith("192.168.1.20:8787")
+    assert "https" not in view.backup_ip_label.text()

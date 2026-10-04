@@ -71,6 +71,8 @@ class ServerController:
         self.selected_adapter: str | None = None
         # 关闭后主页只展示 IP，并且不再广播 lanimals.local。
         self.use_domain = True
+        # 开启后用自签名证书提供 HTTPS，所有访问地址随之换成 https://。
+        self.https = False
         self.bind_host: str = "127.0.0.1"
         self.port: int = 8787
         self.join_url: str = f"http://127.0.0.1:{self.port}/"
@@ -86,6 +88,7 @@ class ServerController:
             self.local_only = config.gui_local_only
             self.selected_adapter = config.gui_selected_adapter
             self.use_domain = config.gui_use_domain
+            self.https = config.https
 
         # 快速计算 IP 目标（主线程 0 阻塞）
         self._update_network_targets_fast()
@@ -137,6 +140,7 @@ class ServerController:
         adapter_name: str | None,
         max_upload_size: str,
         use_domain: bool | None = None,
+        https: bool | None = None,
     ) -> str:
         """一次保存设置页的所有常规选项，并且只重启服务一次。"""
         with self._lock:
@@ -148,10 +152,12 @@ class ServerController:
                 selected_adapter=adapter_name,
                 max_upload_size=max_upload_size,
                 use_domain=use_domain,
+                https=https,
             )
             self.local_only = local_only
             self.selected_adapter = adapter_name
             self.use_domain = updated.gui_use_domain
+            self.https = updated.https
             was_running = self.is_running
 
         if was_running:
@@ -220,7 +226,7 @@ class ServerController:
 
         if self.local_only:
             self.bind_host = "127.0.0.1"
-            self.ip_url = f"http://127.0.0.1:{config_port}/"
+            self.ip_url = f"{self._scheme}://127.0.0.1:{config_port}/"
             self.join_url = self.ip_url
             self.mdns_available = False
             return
@@ -236,14 +242,17 @@ class ServerController:
         except Exception:
             self.bind_host = "127.0.0.1"
 
-        self.ip_url = f"http://{self.bind_host}:{config_port}/"
+        self.ip_url = f"{self._scheme}://{self.bind_host}:{config_port}/"
         # 同一地址已确认过域名时乐观显示 lanimals.local，后台重新注册并验证，失败再退回 IP。
         self.mdns_available = self.use_domain and self._mdns_verified_host == self.bind_host
         self.join_url = self._mdns_url(config_port) if self.mdns_available else self.ip_url
 
-    @staticmethod
-    def _mdns_url(port: int) -> str:
-        return f"http://lanimals.local:{port}/"
+    @property
+    def _scheme(self) -> str:
+        return "https" if self.https else "http"
+
+    def _mdns_url(self, port: int) -> str:
+        return f"{self._scheme}://lanimals.local:{port}/"
 
     def _load_mdns_cache(self) -> str | None:
         try:
@@ -320,6 +329,12 @@ class ServerController:
             data_dir = self.data_dir
             max_upload = config.max_upload_bytes
             should_advertise = self.use_domain and not self.local_only and is_private_lan_ipv4(bind_host)
+            ssl_options: dict[str, str] = {}
+            if config.https:
+                from lanimals.tls import ensure_certificate
+
+                cert_path, key_path = ensure_certificate(data_dir, bind_host)
+                ssl_options = {"ssl_certfile": str(cert_path), "ssl_keyfile": str(key_path)}
 
             app = create_app(
                 data_dir=data_dir,
@@ -333,6 +348,7 @@ class ServerController:
                 log_level="warning",
                 access_log=False,
                 log_config=None,
+                **ssl_options,
             )
             server = uvicorn.Server(uvicorn_config)
             server.install_signal_handlers = lambda: None

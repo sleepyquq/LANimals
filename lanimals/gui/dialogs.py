@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from lanimals.config import MIN_PASSWORD_LENGTH
 from lanimals.gui.i18n import button_text, t
 from lanimals.gui.qt_theme import WINDOW_CORNER_RADIUS, QtTheme, ui_font
 
@@ -200,7 +201,7 @@ class PasswordDialog(_BaseCard):
         if not value:
             self.error_label.setText(t("gui.passwordEmpty"))
             return
-        if len(value) < 4:
+        if len(value) < MIN_PASSWORD_LENGTH:
             self.error_label.setText(t("gui.passwordTooShort"))
             return
         self.password = value

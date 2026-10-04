@@ -313,6 +313,13 @@ class SettingsView(QWidget):
             self.domain_switch,
             subtitle=self.backup_ip_label,
         )
+        # HTTPS：加密局域网流量；首次访问浏览器会提示自签名证书。
+        self.https_switch = AnimatedToggle(self.theme, net_card)
+        self.https_switch.setAccessibleName(t("gui.https"))
+        self.https_switch.toggled.connect(self._on_https_toggled)
+        https_hint = QLabel(t("gui.httpsHint"), net_card)
+        https_hint.setStyleSheet(f"color: {self.theme.text_muted}; font-size: 10px;")
+        self._add_row(net_rows, net_card, t("gui.https"), self.https_switch, subtitle=https_hint)
         layout.addWidget(net_card)
         layout.addSpacing(14)
 
@@ -500,6 +507,7 @@ class SettingsView(QWidget):
             self.adapter_menu.setCurrentText(selected)
             self.adapter_menu.blockSignals(False)
             self.domain_switch.set_state(self.app.controller.use_domain, animated=False, emit=False)
+            self.https_switch.set_state(self.app.controller.https, animated=False, emit=False)
             self._update_backup_ip_label()
             self._has_unsaved_changes = False
             self._set_settings_controls_enabled(not self._save_pending)
@@ -516,9 +524,14 @@ class SettingsView(QWidget):
             return
         self._mark_settings_dirty()
 
+    def _on_https_toggled(self, _checked: bool) -> None:
+        if self._refreshing or self._save_pending:
+            return
+        self._mark_settings_dirty()
+
     def _update_backup_ip_label(self) -> None:
         """只在启用固定域名时显示备用 IP；关闭时主页本身就展示 IP。"""
-        address = self.app.controller.ip_url.removeprefix("http://").rstrip("/")
+        address = self.app.controller.ip_url.split("://", 1)[-1].rstrip("/")
         self.backup_ip_label.setText(t("gui.backupIp", address=address))
         self.backup_ip_label.setHidden(not self.app.controller.use_domain)
 
@@ -543,6 +556,7 @@ class SettingsView(QWidget):
         """保存/重启期间冻结所有会影响同一份主机配置的字段；没有改动时不可保存。"""
         self.adapter_menu.setEnabled(enabled and not self.app.controller.local_only)
         self.domain_switch.setEnabled(enabled)
+        self.https_switch.setEnabled(enabled)
         self.upload_entry.setEnabled(enabled)
         self.save_restart_button.setEnabled(enabled and self._has_unsaved_changes)
 
@@ -564,12 +578,14 @@ class SettingsView(QWidget):
         self.save_restart_button.setText(button_text("gui.savingAndRestarting"))
         adapter_name = self._adapter_map.get(self.adapter_menu.currentText())
         use_domain = self.domain_switch.isChecked()
+        https = self.https_switch.isChecked()
         self.app.run_controller_action(
             lambda: self.app.controller.apply_settings(
                 local_only=self.app.controller.local_only,
                 adapter_name=adapter_name,
                 max_upload_size=f"{number:g}GB",
                 use_domain=use_domain,
+                https=https,
             ),
             on_success=self._finish_settings_save,
             on_error=self._handle_settings_save_error,

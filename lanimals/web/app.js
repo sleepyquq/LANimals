@@ -1303,7 +1303,9 @@ function uploadCombinedMessage(body, files) {
       const error = new Error(
         request.status === 413
           ? t("upload.tooLarge")
-          : t("upload.failed", { status: request.status }),
+          : request.status === 507
+            ? t("upload.diskFull")
+            : t("upload.failed", { status: request.status }),
       );
       error.status = request.status;
       finishRequest();
@@ -1488,7 +1490,9 @@ loginForm.addEventListener("submit", async (event) => {
     });
     await showChat(identity);
   } catch (error) {
-    loginError.textContent = error.status === 401 ? t("errors.wrongPassword") : error.message;
+    if (error.status === 401) loginError.textContent = t("errors.wrongPassword");
+    else if (error.status === 429) loginError.textContent = t("errors.tooManyAttempts");
+    else loginError.textContent = error.message;
   }
 });
 
