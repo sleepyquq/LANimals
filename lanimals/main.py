@@ -6,11 +6,12 @@ import asyncio
 import hmac
 import os
 import secrets
+import time
 import uuid
 from pathlib import Path
 from collections.abc import Callable
 
-from fastapi import Cookie, FastAPI, File, Form, Header, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Cookie, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -20,6 +21,7 @@ from lanimals.identity import DeviceRegistry
 from lanimals.limits import UploadSizeLimitMiddleware
 from lanimals.realtime import RealtimeHub
 from lanimals.store import ChatStore
+from lanimals.throttle import LoginThrottle
 
 MAX_ATTACHMENTS_PER_MESSAGE = 12
 INLINE_MEDIA_TYPES = frozenset(
@@ -83,6 +85,7 @@ def create_app(
     password_hash: str | None = None,
     password_hash_provider: Callable[[], str] | None = None,
     max_upload_bytes: int = 2 * 1024**3,
+    clock: Callable[[], float] = time.time,
 ) -> FastAPI:
     if chat_password is None and password_hash is None and password_hash_provider is None:
         raise ValueError("chat_password, password_hash, or password_hash_provider is required")
@@ -90,7 +93,8 @@ def create_app(
     uploads_dir = data_dir / "uploads"
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
-    registry = DeviceRegistry(data_dir / "chat.db")
+    registry = DeviceRegistry(data_dir / "chat.db", clock=clock)
+    login_throttle = LoginThrottle(clock=clock)
     chat_store = ChatStore(data_dir / "chat.db")
     hub = RealtimeHub()
     active_uploads: dict[str, tuple[str, asyncio.Event]] = {}
@@ -118,17 +122,29 @@ def create_app(
     @app.post("/api/login")
     def login(
         payload: LoginRequest,
+        request: Request,
         response: Response,
         device_token: str | None = Cookie(default=None, alias="lan_device"),
         temp_device_token: str | None = Cookie(default=None, alias="lan_temp_device"),
     ):
+        client_address = request.client.host if request.client else "unknown"
+        # 锁定期间先拒绝，不做 scrypt 计算，同时挡住暴力猜测和刷 CPU。
+        retry_after = login_throttle.retry_after(client_address)
+        if retry_after:
+            raise HTTPException(
+                status_code=429,
+                detail="密码错误次数过多，请稍后再试",
+                headers={"Retry-After": str(retry_after)},
+            )
         if chat_password is not None:
             password_matches = hmac.compare_digest(payload.password, chat_password)
         else:
             active_hash = password_hash_provider() if password_hash_provider is not None else (password_hash or "")
             password_matches = verify_password(payload.password, active_hash)
         if not password_matches:
+            login_throttle.record_failure(client_address)
             raise HTTPException(status_code=401, detail="群聊密码不正确")
+        login_throttle.record_success(client_address)
 
         temporary = payload.incognito
         if temporary:

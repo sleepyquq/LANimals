@@ -39,9 +39,12 @@ def parse_size(value: str) -> int:
     return int(amount * _SIZE_MULTIPLIERS[match.group(2).upper()])
 
 
+MIN_PASSWORD_LENGTH = 8
+
+
 def hash_password(password: str) -> str:
-    if len(password) < 4:
-        raise ValueError("群聊密码至少需要 4 个字符")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"群聊密码至少需要 {MIN_PASSWORD_LENGTH} 个字符")
     salt = os.urandom(16)
     digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=2**14, r=8, p=1, dklen=32)
     return "scrypt$16384$8$1${}${}".format(

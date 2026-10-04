@@ -1488,7 +1488,9 @@ loginForm.addEventListener("submit", async (event) => {
     });
     await showChat(identity);
   } catch (error) {
-    loginError.textContent = error.status === 401 ? t("errors.wrongPassword") : error.message;
+    if (error.status === 401) loginError.textContent = t("errors.wrongPassword");
+    else if (error.status === 429) loginError.textContent = t("errors.tooManyAttempts");
+    else loginError.textContent = error.message;
   }
 });
 

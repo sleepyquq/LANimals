@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import secrets
 import sqlite3
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 _PERSISTENT_PREFIXES = ("奶油", "云朵", "薄荷", "橘子", "松饼", "星糖", "桃子", "栗子", "棉花", "蜂蜜", "雨滴", "森林")
@@ -20,9 +22,20 @@ TEMPORARY_NAMES = (
 )
 
 
+SESSION_TTL_SECONDS = 30 * 24 * 60 * 60
+
+
 class DeviceRegistry:
-    def __init__(self, database: Path) -> None:
+    def __init__(
+        self,
+        database: Path,
+        *,
+        session_ttl_seconds: int = SESSION_TTL_SECONDS,
+        clock: Callable[[], float] = time.time,
+    ) -> None:
         self.database = Path(database)
+        self.session_ttl_seconds = session_ttl_seconds
+        self._clock = clock
         self.database.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.execute("PRAGMA journal_mode = WAL")
@@ -38,11 +51,13 @@ class DeviceRegistry:
                 CREATE TABLE IF NOT EXISTS sessions (
                     token_hash TEXT PRIMARY KEY,
                     device_token_hash TEXT NOT NULL,
+                    created_at INTEGER,
                     FOREIGN KEY(device_token_hash) REFERENCES devices(token_hash)
                 );
                 """
             )
             self._ensure_public_ids(connection)
+            self._ensure_session_created_at(connection)
 
     def get_or_create(self, token: str, *, temporary: bool) -> str:
         token_hash = self._hash(token)
@@ -82,8 +97,8 @@ class DeviceRegistry:
         session_token = secrets.token_urlsafe(32)
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO sessions (token_hash, device_token_hash) VALUES (?, ?)",
-                (self._hash(session_token), self._hash(device_token)),
+                "INSERT INTO sessions (token_hash, device_token_hash, created_at) VALUES (?, ?, ?)",
+                (self._hash(session_token), self._hash(device_token), int(self._clock())),
             )
         return session_token
 
@@ -98,9 +113,9 @@ class DeviceRegistry:
                 SELECT devices.display_name, devices.temporary, devices.public_id
                 FROM sessions
                 JOIN devices ON devices.token_hash = sessions.device_token_hash
-                WHERE sessions.token_hash = ?
+                WHERE sessions.token_hash = ? AND sessions.created_at > ?
                 """,
-                (self._hash(session_token),),
+                (self._hash(session_token), int(self._clock()) - self.session_ttl_seconds),
             ).fetchone()
         return (str(row[0]), bool(row[1]), str(row[2])) if row else None
 
@@ -119,6 +134,19 @@ class DeviceRegistry:
             )
         connection.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS devices_public_id_unique ON devices(public_id)"
+        )
+
+    def _ensure_session_created_at(self, connection: sqlite3.Connection) -> None:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info('sessions')")}
+        if "created_at" not in columns:
+            connection.execute("ALTER TABLE sessions ADD COLUMN created_at INTEGER")
+        # 升级前已存在的会话从现在起重新计算有效期，避免升级后所有人立刻掉线。
+        connection.execute(
+            "UPDATE sessions SET created_at = ? WHERE created_at IS NULL", (int(self._clock()),)
+        )
+        connection.execute(
+            "DELETE FROM sessions WHERE created_at <= ?",
+            (int(self._clock()) - self.session_ttl_seconds,),
         )
 
     @staticmethod

@@ -31,14 +31,14 @@ def test_password_card_validates_before_emitting_confirmation(qt_application: QA
     submitted: list[str] = []
     dialog.submitted.connect(submitted.append)
 
-    dialog.entry.setText("abc")
+    dialog.entry.setText("abcdefg")
     dialog._submit()
     assert submitted == []
     assert dialog.error_label.text()
 
-    dialog.entry.setText("abcd")
+    dialog.entry.setText("abcdefgh")
     dialog._submit()
-    assert submitted == ["abcd"]
+    assert submitted == ["abcdefgh"]
 
 
 def test_clear_data_card_stays_in_the_same_modal_system(qt_application: QApplication) -> None:

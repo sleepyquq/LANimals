@@ -61,6 +61,7 @@
   "errors": {
     "requestFailed": "Request failed ({status})",
     "wrongPassword": "Incorrect room password",
+    "tooManyAttempts": "Too many wrong passwords. Please wait a moment and try again.",
     "sessionExpired": "Your session expired. Please sign in again.",
     "sendFailed": "Message failed to send. Please try again.",
     "invalidResponse": "The server returned an invalid response. Please try again."
@@ -93,7 +94,7 @@
     "initPasswordTitle": "First Launch - Set Room Password",
     "initPasswordHint": "Please set a shared room password for all LAN devices to join:",
     "passwordEmpty": "Password cannot be empty",
-    "passwordTooShort": "Password must contain at least 4 characters",
+    "passwordTooShort": "Password must contain at least 8 characters",
     "clearData": "Clear all chat history & files",
     "clearDataWarning": "This will permanently delete all messages and uploaded files!",
     "clearConfirmPrompt": "Type DELETE ALL to confirm:",
