@@ -11,6 +11,7 @@
     <img alt="WebSocket" src="https://img.shields.io/badge/Realtime-WebSocket-F2A04F">
     <img alt="本地优先" src="https://img.shields.io/badge/Storage-Local--first-6C5B50">
     <img alt="Windows Linux macOS" src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-5A67D8">
+    <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-green"></a>
     <a href="https://github.com/sleepyquq/LANimals/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/sleepyquq/LANimals?label=Download"></a>
   </p>
 
@@ -328,3 +329,7 @@ LANimals 面向家庭和小型办公室。目前只提供一个共享房间，�
 
 **能在手机上删除消息吗？**
 不能，这是有意的设计。浏览器客户端没有删除或管理功能，清理只能在主机上进行。
+
+## 许可证
+
+[MIT](LICENSE)：可自由使用、修改和再分发。

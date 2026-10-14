@@ -11,6 +11,7 @@
     <img alt="WebSocket" src="https://img.shields.io/badge/Realtime-WebSocket-F2A04F">
     <img alt="Local first" src="https://img.shields.io/badge/Storage-Local--first-6C5B50">
     <img alt="Windows Linux macOS" src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-5A67D8">
+    <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-green"></a>
     <a href="https://github.com/sleepyquq/LANimals/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/sleepyquq/LANimals?label=Download"></a>
   </p>
 
@@ -328,3 +329,7 @@ On the host only, in the `data/` folder (macOS app: `~/Library/Application Suppo
 
 **Can I delete messages from a phone?**
 No, by design. Browser clients have no delete or admin features; cleanup happens only on the host.
+
+## License
+
+[MIT](LICENSE) — free to use, modify, and redistribute.

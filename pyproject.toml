@@ -13,6 +13,7 @@ keywords = [
 ]
 classifiers = [
   "Environment :: Web Environment",
+  "License :: OSI Approved :: MIT License",
   "Framework :: FastAPI",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
@@ -21,6 +22,7 @@ classifiers = [
   "Topic :: Communications :: File Sharing",
 ]
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1.0",
