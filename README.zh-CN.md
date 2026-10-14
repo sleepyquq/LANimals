@@ -1,8 +1,8 @@
 <div align="center">
-  <img src="docs/assets/lanimals-icon.png" width="104" height="104" alt="LANimals 猫猫应用图标">
+  <img src="docs/assets/lanimals-icon.png" width="104" height="104" alt="LANimals 图标 —— 局域网聊天与文件传输">
   <h1>LANimals</h1>
-  <p><strong>一台主机，一个房间，连接局域网里的所有设备。</strong></p>
-  <p>无需云服务，在手机、平板和电脑之间持续发送消息与文件的轻量浏览器聊天室。</p>
+  <p><strong>自托管的局域网聊天与文件互传工具：手机和电脑在同一 Wi‑Fi 下用浏览器互发消息和文件，无需联网、无需装 App、无需注册账号。</strong></p>
+  <p>一台主机，一个房间，连接局域网里的所有设备。</p>
 
   <p>
     <img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white">
@@ -11,6 +11,7 @@
     <img alt="WebSocket" src="https://img.shields.io/badge/Realtime-WebSocket-F2A04F">
     <img alt="本地优先" src="https://img.shields.io/badge/Storage-Local--first-6C5B50">
     <img alt="Windows Linux macOS" src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-5A67D8">
+    <a href="https://github.com/sleepyquq/LANimals/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/sleepyquq/LANimals?label=Download"></a>
   </p>
 
   <p>
@@ -20,7 +21,7 @@
 
 ---
 
-LANimals 在局域网内的一台电脑上运行。其他设备打开浏览器、输入共享房间密码，就可以立即发送文字和文件。主机本地保存 SQLite 数据库和上传文件，服务重启后聊天记录仍然存在。
+**LANimals** 是一个开源、自托管的局域网聊天室和文件传输工具（内网聊天 / 局域网文件共享）。在一台 Windows、macOS 或 Linux 电脑上运行它，同一 Wi‑Fi 或局域网里的 iPhone、安卓手机、iPad、平板和笔记本，只要用浏览器打开主机地址、输入共享房间密码，就能立即互发文字、照片、视频和任意类型的文件。数据不出局域网：完全离线可用，客户端不用装 App、不用注册、不经过任何云服务器，消息和文件历史保存在主机上，重启后依然存在。
 
 如果 LocalSend 适合一次性传输文件，LANimals 则保留文件前后的对话。
 
@@ -30,14 +31,62 @@ LANimals 在局域网内的一台电脑上运行。其他设备打开浏览器�
 
 <table>
   <tr>
-    <td width="68%"><a href="docs/assets/lanimals-desktop-light.png"><img src="docs/assets/lanimals-desktop-light.png" alt="LANimals 电脑端浅色聊天界面"></a></td>
-    <td width="32%"><a href="docs/assets/lanimals-mobile-dark.png"><img src="docs/assets/lanimals-mobile-dark.png" alt="LANimals 手机端深色聊天界面"></a></td>
+    <td width="68%"><a href="docs/assets/lanimals-desktop-light.png"><img src="docs/assets/lanimals-desktop-light.png" alt="LANimals 电脑浏览器浅色界面：局域网内收发消息、图片预览和文件附件"></a></td>
+    <td width="32%"><a href="docs/assets/lanimals-mobile-dark.png"><img src="docs/assets/lanimals-mobile-dark.png" alt="LANimals 手机浏览器深色界面：通过 Wi-Fi 把文件和消息发到电脑"></a></td>
   </tr>
   <tr>
     <td align="center">电脑端 · 浅色</td>
     <td align="center">手机端 · 深色</td>
   </tr>
 </table>
+
+## 一览
+
+| | |
+|---|---|
+| **是什么** | 面向单个局域网（LAN / Wi‑Fi）的自托管群聊 + 文件互传 |
+| **主机** | Windows、macOS 或 Linux —— 下载打包好的应用，或用 Python 3.11+ 运行源码 |
+| **客户端** | 任意现代浏览器：iOS、Android、iPadOS、Windows、macOS、Linux、ChromeOS，无需安装 |
+| **是否需要外网** | 不需要。离线可用，不使用 CDN、遥测、统计或云存储 |
+| **账号** | 没有账号。一个共享房间密码，每台设备自动获得一个动物昵称 |
+| **历史记录** | 持久保存：SQLite 在主机上，上传文件在主机磁盘上 |
+| **加入方式** | `http://lanimals.local:8787/`（mDNS）、主机局域网 IP，或扫描二维码 |
+| **文件大小** | 支持任意文件类型；默认单次上传上限 2 GB，可在主机上修改 |
+| **加密** | 可选 HTTPS（自签名证书），适合不完全可信的 Wi‑Fi |
+| **技术栈** | FastAPI、WebSocket、SQLite（WAL）、原生 HTML/CSS/JS、PySide6 桌面控制面板 |
+
+## 适用场景
+
+- **手机和电脑互传文件**：iPhone 传 Windows 电脑、安卓传 Mac、iPad 传 Linux，不用数据线、蓝牙、邮箱或网盘，也不用经过微信/QQ 压缩。
+- **跨平台的 AirDrop（隔空投送）替代品**：苹果和非苹果设备之间直接用浏览器互传。
+- **自己设备之间的“文件传输助手”**：像微信文件传输助手，但完全自托管，数据不离开局域网。
+- **家庭、办公室、教室、实验室、会议室共享文件**：大家连着同一个 Wi‑Fi，又不想用公网聊天软件。
+- **没有外网的内网或离线环境**：内网办公、局域网联机、活动现场、外出用的便携路由器。
+- **类似飞秋 / 飞鸽传书的局域网群聊**，但所有设备只需要浏览器，聊天和文件记录长期保存。
+
+## 和同类工具对比
+
+| | LANimals | LocalSend | PairDrop / Snapdrop | AirDrop 隔空投送 | Mattermost / Rocket.Chat |
+|---|---|---|---|---|---|
+| 客户端要求 | 只要浏览器 | 每台设备装 App | 只要浏览器 | 仅限苹果设备 | 浏览器或 App + 账号 |
+| 持久保存聊天和文件记录 | ✅ | — | — | — | ✅ |
+| 多设备共享群聊房间 | ✅ | — | — | — | ✅ |
+| 无外网可用 | ✅ | ✅ | 需自行部署 | ✅ | 需自行部署 |
+| 部署负担 | 一个进程、一个文件夹 | 每台设备安装 | 需要信令服务器 | 系统内置 | 服务器 + 数据库 + 用户管理 |
+
+只是临时传一次文件，LocalSend 或 PairDrop 更合适；想要一个轻量的共享房间，让文件和围绕它的对话都留在自己的电脑上，就用 LANimals。
+
+## 下载
+
+每个版本的打包应用都在 [**Releases 页面**](https://github.com/sleepyquq/LANimals/releases/latest)：
+
+| 平台 | 文件 |
+|---|---|
+| Windows x64 | `LANimals-windows-x64.zip` —— 解压后运行 `LANimals.exe` |
+| macOS | `LANimals-macos.zip` |
+| Linux x64 | `LANimals-linux-x64.tar.gz` |
+
+应用会打开一个桌面控制面板并显示加入二维码。只有主机需要安装，其他设备用浏览器打开地址即可。想从源码运行，请看[快速开始](#快速开始)。
 
 ## 功能
 
@@ -79,6 +128,8 @@ flowchart LR
 主机会自动寻找 RFC1918 私有地址（`10.x`、`172.16-31.x` 或 `192.168.x`）。如果找不到，它只绑定 `127.0.0.1`，不会监听未知网络接口。条件允许时，LANimals 会通过 mDNS 广播 `lanimals.local`，并在终端打印加入二维码。
 
 ## 快速开始
+
+从源码运行（也可以直接[下载打包好的应用](#下载)）：
 
 ### Linux / macOS
 
@@ -254,3 +305,26 @@ node --check lanimals/web/app.js
 ## 当前范围
 
 LANimals 面向家庭和小型办公室。目前只提供一个共享房间，不提供公网托管、私聊、多频道、用户账号、消息编辑、逐条删除、媒体转码或多进程 Worker 部署。
+
+## 常见问题
+
+**需要连外网吗？**
+不需要。主机和浏览器只在局域网内通信，程序不加载任何 CDN、字体、统计或遥测，所以在断网或物理隔离的内网中也能用。
+
+**手机需要装 App 吗？**
+不需要。iOS、Android 或电脑上的任意现代浏览器都可以。只有主机电脑需要运行 LANimals。
+
+**怎么把 iPhone / 安卓手机上的文件传到电脑？**
+在电脑上启动 LANimals，用手机扫描它显示的二维码（或打开 `http://lanimals.local:8787/`、终端打印的 IP 地址），输入房间密码后选择附件发送。文件会立刻出现在所有已打开的浏览器里，包括电脑上的。
+
+**文件大小有限制吗？**
+默认单次上传 2 GB，可以在主机上用 `python -m lanimals config --max-upload-size 10GB` 或桌面设置页修改。主机磁盘快满时会暂停接收新上传。
+
+**在公共或共享 Wi‑Fi 上安全吗？**
+在桌面设置中打开 **加密连接 (HTTPS)**，流量会用自签名证书加密。详见[安全边界](#安全边界)。不要把 LANimals 直接暴露到公网。
+
+**消息和文件存在哪里？怎么备份？**
+只存在主机的 `data/` 目录里（macOS 应用为 `~/Library/Application Support/LANimals`）。停止应用后复制整个目录即可。详见[数据与备份](#数据与备份)。
+
+**能在手机上删除消息吗？**
+不能，这是有意的设计。浏览器客户端没有删除或管理功能，清理只能在主机上进行。

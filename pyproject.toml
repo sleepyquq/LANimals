@@ -5,7 +5,21 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lanimals"
 version = "0.2.2"
-description = "A lightweight local-network group chat with animal device identities"
+description = "Self-hosted LAN chat and file sharing: send messages and files between phones and computers on the same Wi-Fi from any browser, offline, with no app or account"
+keywords = [
+  "lan", "lan-chat", "local-network", "file-sharing", "file-transfer",
+  "self-hosted", "offline", "airdrop-alternative", "localsend-alternative",
+  "wifi", "chat", "websocket", "fastapi", "intranet",
+]
+classifiers = [
+  "Environment :: Web Environment",
+  "Framework :: FastAPI",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Communications :: Chat",
+  "Topic :: Communications :: File Sharing",
+]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -19,6 +33,11 @@ dependencies = [
   "pillow>=10.0.0",
   "cryptography>=42,<47",
 ]
+
+[project.urls]
+Homepage = "https://github.com/sleepyquq/LANimals"
+Download = "https://github.com/sleepyquq/LANimals/releases/latest"
+Issues = "https://github.com/sleepyquq/LANimals/issues"
 
 [project.optional-dependencies]
 dev = [
