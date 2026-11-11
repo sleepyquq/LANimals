@@ -342,3 +342,51 @@ def test_storage_reserve_scales_down_for_small_disks():
 
     assert storage_reserve_bytes(2 * 1024**4) == 10 * 1024**3
     assert storage_reserve_bytes(32 * 1024**3) == int(3.2 * 1024**3)
+
+
+def test_download_link_ticket_allows_cookieless_download_and_expires(tmp_path):
+    now = [1_000_000.0]
+    app = create_app(
+        data_dir=tmp_path,
+        chat_password="shared-secret",
+        max_upload_bytes=1024,
+        clock=lambda: now[0],
+    )
+
+    with TestClient(app) as browser, TestClient(app) as download_manager:
+        login(browser)
+        attachment = browser.post(
+            "/api/files",
+            files={"file": ("报告.pdf", b"ticket content", "application/pdf")},
+        ).json()["attachment"]
+        other = browser.post(
+            "/api/files",
+            files={"file": ("other.txt", b"other", "text/plain")},
+        ).json()["attachment"]
+
+        assert download_manager.post(f"/api/files/{attachment['id']}/download-link").status_code == 401
+        assert browser.post("/api/files/missing/download-link").status_code == 404
+
+        link = browser.post(f"/api/files/{attachment['id']}/download-link")
+        assert link.status_code == 200
+        url = link.json()["url"]
+        assert url.startswith(f"/api/files/{attachment['id']}?ticket=")
+
+        # 系统下载器不带 Cookie 重新请求，也能拿到文件并保留附件头。
+        downloaded = download_manager.get(url)
+        assert downloaded.status_code == 200
+        assert downloaded.content == b"ticket content"
+        assert downloaded.headers["content-disposition"].startswith("attachment;")
+        resumed = download_manager.get(url, headers={"Range": "bytes=7-"})
+        assert resumed.status_code == 206
+        assert resumed.content == b"content"
+
+        ticket = url.split("ticket=", 1)[1]
+        assert download_manager.get(f"/api/files/{other['id']}?ticket={ticket}").status_code == 401
+        assert download_manager.get(f"/api/files/{attachment['id']}?ticket=bogus").status_code == 401
+        assert download_manager.get(f"/api/files/{attachment['id']}").status_code == 401
+
+        now[0] += 60 * 60 + 1
+        assert download_manager.get(url).status_code == 401
+        # 带 Cookie 的浏览器不受票据过期影响。
+        assert browser.get(url).status_code == 200
