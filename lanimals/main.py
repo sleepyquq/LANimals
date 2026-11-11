@@ -26,6 +26,9 @@ from lanimals.store import ChatStore
 from lanimals.throttle import LoginThrottle
 
 MAX_ATTACHMENTS_PER_MESSAGE = 12
+# 下载票据有效期：部分手机浏览器/系统下载器会脱离页面重新请求下载地址且不带 Cookie，
+# 票据让这类请求也能通过鉴权；留出足够时间给下载器排队、断点续传。
+DOWNLOAD_TICKET_TTL_SECONDS = 60 * 60
 INLINE_MEDIA_TYPES = frozenset(
     {
         "image/avif",
@@ -102,6 +105,26 @@ def create_app(
     hub = RealtimeHub()
     active_uploads: dict[str, tuple[str, asyncio.Event]] = {}
     app = FastAPI(title="LANimals", docs_url=None, redoc_url=None, openapi_url=None)
+    # 票据密钥只存在于本进程内存，服务重启后旧票据自然作废。
+    download_ticket_key = secrets.token_bytes(32)
+
+    def download_ticket_signature(attachment_id: str, expires: int) -> str:
+        message = f"{attachment_id}:{expires}".encode()
+        return hmac.new(download_ticket_key, message, "sha256").hexdigest()
+
+    def issue_download_ticket(attachment_id: str) -> str:
+        expires = int(clock()) + DOWNLOAD_TICKET_TTL_SECONDS
+        return f"{expires}.{download_ticket_signature(attachment_id, expires)}"
+
+    def download_ticket_is_valid(attachment_id: str, ticket: str) -> bool:
+        expires_text, separator, signature = ticket.partition(".")
+        if not separator or not expires_text.isdigit():
+            return False
+        expires = int(expires_text)
+        if expires < clock():
+            return False
+        return hmac.compare_digest(signature, download_ticket_signature(attachment_id, expires))
+
     def storage_has_room(incoming_bytes: int) -> bool:
         # 多部分表单先落到系统临时目录，再复制到 uploads；两处都要留足余量。
         for location in {uploads_dir, Path(tempfile.gettempdir())}:
@@ -346,9 +369,22 @@ def create_app(
             active[1].set()
         return Response(status_code=204)
 
-    @app.get("/api/files/{attachment_id}")
-    def download_file(attachment_id: str, lan_session: str | None = Cookie(default=None)):
+    @app.post("/api/files/{attachment_id}/download-link")
+    def create_download_link(attachment_id: str, lan_session: str | None = Cookie(default=None)):
         require_identity(lan_session)
+        if not chat_store.get_attachment(attachment_id):
+            raise HTTPException(status_code=404, detail="文件不存在")
+        ticket = issue_download_ticket(attachment_id)
+        return {"url": f"/api/files/{attachment_id}?ticket={ticket}"}
+
+    @app.get("/api/files/{attachment_id}")
+    def download_file(
+        attachment_id: str,
+        ticket: str | None = None,
+        lan_session: str | None = Cookie(default=None),
+    ):
+        if ticket is None or not download_ticket_is_valid(attachment_id, ticket):
+            require_identity(lan_session)
         attachment = chat_store.get_attachment(attachment_id)
         if not attachment:
             raise HTTPException(status_code=404, detail="文件不存在")
