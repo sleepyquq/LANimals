@@ -239,6 +239,8 @@ def test_composer_is_floating_combined_drop_zone_and_ui_uses_locale_files(tmp_pa
     assert 'const attachment = document.createElement("div");' in script
     assert 'downloadLink.className = "attachment-download";' in script
     assert 'downloadLink.href = `/api/files/${encodeURIComponent(item.id)}`;' in script
+    assert "startAttachmentDownload(event, item)" in script
+    assert "/download-link`" in script
     assert 't("attachment.download", { name: item.original_name })' in script
     assert "attachment.href =" not in script
     assert ".attachment-download" in css

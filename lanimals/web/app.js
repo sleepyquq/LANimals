@@ -241,6 +241,35 @@ async function api(path, options = {}) {
   return response.json();
 }
 
+// 部分手机浏览器（以及交给系统下载器的浏览器）会脱离当前页面重新请求下载地址，
+// 这些请求不带登录 Cookie，服务端返回 401 后浏览器只会提示“网络错误”。
+// 点击时先换取带短期票据的下载地址，下载请求即使不带 Cookie 也能通过鉴权。
+async function startAttachmentDownload(event, item) {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+  event.preventDefault();
+  const fallbackUrl = event.currentTarget.href;
+  let url = fallbackUrl;
+  try {
+    const link = await api(`/api/files/${encodeURIComponent(item.id)}/download-link`, { method: "POST" });
+    if (link && typeof link.url === "string") url = link.url;
+  } catch (error) {
+    if (error.status === 401) {
+      showLogin("errors.sessionExpired");
+      return;
+    }
+  }
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = item.original_name;
+  anchor.rel = "noopener";
+  anchor.hidden = true;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 function setConnection(key, online) {
   const label = t(key);
   connectionLabel.textContent = "";
@@ -655,6 +684,7 @@ function createMessageArticle(message, sameSender) {
         downloadLink.setAttribute("aria-label", downloadLabel);
         downloadLink.title = downloadLabel;
         downloadLink.append(createDownloadIcon());
+        downloadLink.addEventListener("click", (event) => startAttachmentDownload(event, item));
         attachment.append(downloadLink);
         attachmentList.append(attachment);
       });
