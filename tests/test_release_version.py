@@ -45,3 +45,26 @@ def test_repository_version_is_readable() -> None:
     from scripts.check_release_version import project_version
 
     assert project_version(Path(__file__).resolve().parent.parent / "pyproject.toml")
+
+
+def test_rejects_a_package_version_that_differs_from_pyproject(tmp_path: Path) -> None:
+    package_init = tmp_path / "__init__.py"
+    package_init.write_text('__version__ = "0.2.9"\n', encoding="utf-8")
+    with pytest.raises(ReleaseCheckError, match="__version__"):
+        check_release(
+            "v0.3.0",
+            ref="refs/heads/main",
+            pyproject=_pyproject(tmp_path, "0.3.0"),
+            existing_tags=set(),
+            package_init=package_init,
+        )
+
+
+def test_repository_package_version_matches_pyproject() -> None:
+    import tomllib
+
+    import lanimals
+
+    project = Path(__file__).parents[1]
+    with (project / "pyproject.toml").open("rb") as source:
+        assert tomllib.load(source)["project"]["version"] == lanimals.__version__

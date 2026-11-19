@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lanimals"
-version = "0.2.2"
+version = "0.2.3"
 description = "Self-hosted LAN chat and file sharing: send messages and files between phones and computers on the same Wi-Fi from any browser, offline, with no app or account"
 keywords = [
   "lan", "lan-chat", "local-network", "file-sharing", "file-transfer",
@@ -34,6 +34,7 @@ dependencies = [
   "PySide6-Essentials>=6.8,<7",
   "pillow>=10.0.0",
   "cryptography>=42,<47",
+  "certifi>=2024.2.2",
 ]
 
 [project.urls]

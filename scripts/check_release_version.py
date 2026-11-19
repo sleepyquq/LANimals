@@ -26,6 +26,13 @@ def project_version(pyproject: Path) -> str:
         return str(tomllib.load(handle)["project"]["version"])
 
 
+def package_version(package_init: Path) -> str:
+    match = re.search(r'^__version__ = "([^"]+)"', package_init.read_text(encoding="utf-8"), re.MULTILINE)
+    if not match:
+        raise ReleaseCheckError(f"{package_init} 里没有 __version__")
+    return match.group(1)
+
+
 def remote_tags() -> set[str]:
     output = subprocess.run(
         ["git", "ls-remote", "--tags", "origin"], check=True, capture_output=True, text=True
@@ -37,7 +44,14 @@ def remote_tags() -> set[str]:
     return tags
 
 
-def check_release(version: str, *, ref: str, pyproject: Path, existing_tags: set[str]) -> None:
+def check_release(
+    version: str,
+    *,
+    ref: str,
+    pyproject: Path,
+    existing_tags: set[str],
+    package_init: Path | None = None,
+) -> None:
     if not _VERSION_PATTERN.fullmatch(version):
         raise ReleaseCheckError(f"版本号格式应为 v主.次.补丁（例如 v0.3.0），收到：{version!r}")
     if ref != "refs/heads/main":
@@ -47,6 +61,11 @@ def check_release(version: str, *, ref: str, pyproject: Path, existing_tags: set
         raise ReleaseCheckError(
             f"版本号 {version} 与 pyproject.toml 中的 {expected} 不一致；请先把 pyproject.toml 改成 "
             f"{version.removeprefix('v')} 并合并到 main。"
+        )
+    if package_init is not None and package_version(package_init) != expected:
+        raise ReleaseCheckError(
+            f"lanimals/__init__.py 的 __version__（{package_version(package_init)}）与 pyproject.toml 的 "
+            f"{expected} 不一致；一键升级靠它判断当前版本，请改成一致后再发布。"
         )
     if version in existing_tags:
         raise ReleaseCheckError(f"标签 {version} 已存在；如需重新发布，请换一个新版本号。")
@@ -58,7 +77,13 @@ def main() -> int:
     parser.add_argument("--ref", required=True, help="触发工作流的 git ref，例如 refs/heads/main")
     args = parser.parse_args()
     try:
-        check_release(args.version, ref=args.ref, pyproject=PROJECT_ROOT / "pyproject.toml", existing_tags=remote_tags())
+        check_release(
+            args.version,
+            ref=args.ref,
+            pyproject=PROJECT_ROOT / "pyproject.toml",
+            existing_tags=remote_tags(),
+            package_init=PROJECT_ROOT / "lanimals" / "__init__.py",
+        )
     except ReleaseCheckError as error:
         print(f"::error::{error}", flush=True)
         return 1

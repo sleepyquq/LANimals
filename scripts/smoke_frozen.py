@@ -80,6 +80,66 @@ def stop(process: subprocess.Popen) -> None:
         process.wait(timeout=10)
 
 
+def check_update_helper(executable: Path, timeout: float = 120.0) -> bool:
+    """让打包版以一键升级助手模式运行一次，确认它能在打包环境里替换程序文件并保留 data/。"""
+    import json
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="lanimals-update-smoke-") as temp:
+        root = Path(temp)
+        source = root / "new" / "LANimals"
+        (source / "_internal").mkdir(parents=True)
+        (source / "_internal" / "new.txt").write_text("new", encoding="utf-8")
+        (source / "program.txt").write_text("new", encoding="utf-8")
+        target = root / "install" / "LANimals"
+        (target / "_internal").mkdir(parents=True)
+        (target / "_internal" / "old.txt").write_text("old", encoding="utf-8")
+        (target / "program.txt").write_text("old", encoding="utf-8")
+        (target / "data").mkdir()
+        (target / "data" / "chat.db").write_text("keep", encoding="utf-8")
+        finished = subprocess.Popen([sys.executable, "-c", "pass"])
+        finished.wait()
+        workspace = root / "workspace"
+        workspace.mkdir()
+        plan = {
+            "pid": finished.pid,
+            "version": "v0.0.0-smoke",
+            "kind": "dir",
+            "source": str(source),
+            "target": str(target),
+            "relaunch": str(root / "does-not-exist"),
+            "backup": str(workspace / "backup"),
+            "result": str(workspace / "result.json"),
+            "log": str(workspace / "update.log"),
+        }
+        plan_path = workspace / "plan.json"
+        plan_path.write_text(json.dumps(plan), encoding="utf-8")
+        process = subprocess.Popen([str(executable), "--apply-update", str(plan_path)])
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            stop(process)
+            print("升级助手没有在限定时间内结束", flush=True)
+            return False
+        result_path = workspace / "result.json"
+        result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else {}
+        ok = (
+            result.get("ok") is True
+            and (target / "program.txt").read_text(encoding="utf-8") == "new"
+            and (target / "_internal" / "new.txt").exists()
+            and not (target / "_internal" / "old.txt").exists()
+            and (target / "data" / "chat.db").read_text(encoding="utf-8") == "keep"
+        )
+        if ok:
+            print("[OK] 打包版升级助手替换了程序文件并保留了 data/", flush=True)
+        else:
+            print(f"升级助手检查失败，结果：{result}", flush=True)
+            log_path = workspace / "update.log"
+            if log_path.exists():
+                print(log_path.read_text(encoding="utf-8", errors="replace"), flush=True)
+        return ok
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Smoke-test the packaged LANimals desktop app")
     parser.add_argument("--dist", type=Path, default=PROJECT_ROOT / "dist")
@@ -116,7 +176,9 @@ def main() -> int:
         print(log_file.read_text(encoding="utf-8", errors="replace"), flush=True)
     # 删除测试配置：Windows/Linux 的数据目录在 dist/LANimals 内，随后会被打进发布包。
     shutil.rmtree(data_dir, ignore_errors=True)
-    return 0 if ok else 1
+    if not ok:
+        return 1
+    return 0 if check_update_helper(executable) else 1
 
 
 if __name__ == "__main__":

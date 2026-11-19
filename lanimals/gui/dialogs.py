@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from lanimals.config import MIN_PASSWORD_LENGTH
 from lanimals.gui.i18n import button_text, t
 from lanimals.gui.qt_theme import WINDOW_CORNER_RADIUS, QtTheme, ui_font
+from lanimals.gui.widgets import ClickableLabel
 
 
 def _button_style(theme: QtTheme, background: str, hover: str, text_color: str) -> str:
@@ -282,4 +283,84 @@ class ClearDataDialog(_BaseCard):
 
     def show_error(self, message: str) -> None:
         self.error_label.setText(message)
+        self.set_pending(False)
+
+
+class UpdateDialog(_BaseCard):
+    """一键升级确认卡片：显示新版本、下载进度；无法自动升级时改为引导手动下载。"""
+
+    confirmed = Signal()
+    cancelled = Signal()
+    release_notes_requested = Signal()
+    progress_changed = Signal(int)
+
+    def __init__(
+        self,
+        theme: QtTheme,
+        title: str,
+        body: str,
+        *,
+        confirm_text: str,
+        show_release_notes: bool = True,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(theme, parent)
+        layout = self._layout()
+        layout.addWidget(self._title(title))
+
+        self.body_label = QLabel(body, self)
+        self.body_label.setWordWrap(True)
+        self.body_label.setStyleSheet(f"color: {theme.text_muted}; font-size: 11px;")
+        layout.addWidget(self.body_label)
+
+        self.notes_label: QLabel | None = None
+        if show_release_notes:
+            notes = ClickableLabel(self)
+            notes.setText(t("gui.releaseNotes"))
+            notes.setStyleSheet(f"color: {theme.accent}; font-size: 11px;")
+            notes.clicked.connect(self.release_notes_requested.emit)
+            layout.addWidget(notes)
+            self.notes_label = notes
+
+        self.status_label = QLabel("", self)
+        self.status_label.setMinimumHeight(14)
+        self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet(f"color: {theme.text_muted}; font-size: 11px;")
+        layout.addWidget(self.status_label)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
+        self.cancel_button = QPushButton(button_text("gui.cancel"), self)
+        self.cancel_button.setStyleSheet(
+            _button_style(theme, theme.secondary_button, theme.secondary_hover, theme.secondary_text)
+        )
+        self.cancel_button.clicked.connect(self.cancelled.emit)
+        self.confirm_button = QPushButton(confirm_text.replace("&", "&&"), self)
+        self.confirm_button.setStyleSheet(_button_style(theme, theme.accent, theme.accent_hover, "#ffffff"))
+        self.confirm_button.clicked.connect(self.confirmed.emit)
+        actions.addWidget(self.cancel_button)
+        actions.addWidget(self.confirm_button)
+        layout.addLayout(actions)
+        # 后台下载线程发出的进度经由排队连接回到界面线程。
+        self.progress_changed.connect(self._show_progress)
+
+    def _show_progress(self, percent: int) -> None:
+        self.status_label.setStyleSheet(f"color: {self.theme.text_muted}; font-size: 11px;")
+        if percent >= 100:
+            self.status_label.setText(t("gui.updateInstalling"))
+        else:
+            self.status_label.setText(t("gui.updateDownloading", percent=percent))
+
+    def set_status(self, message: str) -> None:
+        self.status_label.setStyleSheet(f"color: {self.theme.text_muted}; font-size: 11px;")
+        self.status_label.setText(message)
+
+    def set_pending(self, pending: bool) -> None:
+        """下载与替换期间锁定按钮，避免重复升级。"""
+        self.cancel_button.setEnabled(not pending)
+        self.confirm_button.setEnabled(not pending)
+
+    def show_error(self, message: str) -> None:
+        self.status_label.setStyleSheet(f"color: {self.theme.danger}; font-size: 11px;")
+        self.status_label.setText(message)
         self.set_pending(False)

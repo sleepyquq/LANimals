@@ -217,6 +217,8 @@ The web interface has no delete route, hidden admin panel, or remote cleanup but
 
 The packaged app opens the desktop control panel directly. Windows and Linux builds store runtime data beside the executable in `data/`; the macOS app stores it in `~/Library/Application Support/LANimals`, because the inside of an `.app` bundle may be read-only and is replaced on upgrade.
 
+**One-click update (v0.2.3 and later):** open Settings in the control panel and click **Check for updates** in the top-right corner. When a newer release exists, **Update now** downloads the matching release asset, verifies its SHA-256, replaces the program files and restarts; messages, files and settings in `data/` are kept, and a failed replacement rolls back to the previous version. LANimals only contacts GitHub when you click; it never checks in the background. On macOS, move LANimals into Applications first; source checkouts update with `git pull`. Installs of v0.2.2 or earlier need one manual upgrade: quit, unpack the new version into a new folder, and move the old `data/` into it.
+
 Build a local Windows portable folder with:
 
 ```powershell

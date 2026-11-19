@@ -143,6 +143,12 @@ def _print_join_information(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+    if raw_args[:1] == ["--apply-update"] and len(raw_args) == 2:
+        # 一键升级助手：由新版程序在旧版退出后替换程序文件，不打开界面。
+        from lanimals.updater import apply_update
+
+        return apply_update(Path(raw_args[1]))
     args = _parser().parse_args(argv)
     if args.command is None:
         if getattr(sys, "frozen", False) or os.environ.get("LANIMALS_FORCE_GUI") == "1":

@@ -11,7 +11,7 @@ Core product rules:
 - One shared room and one shared password; no account registration, channels, or DMs.
 - Text, files, and text+file combined messages persist locally across restarts.
 - Normal browsers keep a long-lived cute animal identity; incognito sessions use a separate session-only mysterious-animal identity.
-- No public internet services, CDN, analytics, advertisements, telemetry, or cloud storage.
+- No public internet services, CDN, analytics, advertisements, telemetry, or cloud storage. The one exception is the desktop "Check for updates" button (`lanimals/updater.py`), which contacts GitHub Releases only when the host user clicks it; never add background or automatic update checks.
 - Browser clients must never expose message/file deletion or remote administration.
 - Destructive and sensitive administration stays in host-local CLI commands.
 - Primary deployment target is a Windows host, but source-run operation must remain cross-platform.
