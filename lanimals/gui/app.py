@@ -12,11 +12,22 @@ from typing import Any
 
 from PySide6.QtCore import QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QCloseEvent, QColor, QIcon, QPainter, QPaintEvent, QShowEvent
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from lanimals import __version__, updater
 
 from lanimals.gui.controller import ServerController
-from lanimals.gui.dialogs import ClearDataDialog, InWindowModalOverlay, PasswordDialog
-from lanimals.gui.i18n import t
+from lanimals.gui.dialogs import ClearDataDialog, InWindowModalOverlay, PasswordDialog, UpdateDialog
+from lanimals.gui.i18n import button_text, t
 from lanimals.gui.qt_theme import WINDOW_CORNER_RADIUS, QtTheme, current_theme, ui_font_families
 from lanimals.gui.single_instance import SingleInstanceLock
 from lanimals.gui.tray import SystemTray
@@ -25,6 +36,22 @@ from lanimals.gui.widgets import DragRegion, HoverToolButton, PageHost
 
 
 logger = logging.getLogger("lanimals.app")
+
+# 升级失败原因 → 界面文案。
+_UPDATE_ERROR_MESSAGES = {
+    "sourceRun": "gui.updateSourceRun",
+    "notWritable": "gui.updateNotWritable",
+    "translocated": "gui.updateTranslocated",
+    "unsupported": "gui.updateUnsupported",
+    "noAsset": "gui.updateUnsupported",
+    "corrupt": "gui.updateCorrupt",
+    "network": "gui.updateNetwork",
+}
+
+
+def update_error_message(error: Exception) -> str:
+    code = getattr(error, "code", "")
+    return t(_UPDATE_ERROR_MESSAGES.get(code, "gui.updateFailed"))
 
 
 def native_rounded_corners_available() -> bool:
@@ -95,6 +122,11 @@ class LANimalsApp(QMainWindow):
         self._toast_timer.setSingleShot(True)
         self._toast_timer.timeout.connect(self._clear_toast)
         self._modal_overlay: InWindowModalOverlay | None = None
+        self.update_button: QPushButton | None = None
+        self._update_check_pending = False
+        self._update_button_timer = QTimer(self)
+        self._update_button_timer.setSingleShot(True)
+        self._update_button_timer.timeout.connect(self._reset_update_button)
         self._next_action_id = 0
         self._action_callbacks: dict[
             int,
@@ -139,6 +171,11 @@ class LANimalsApp(QMainWindow):
 
         # 先完整构造、绘制并显示 Qt 内容，再延后启动本地服务。
         QTimer.singleShot(250, self._check_first_launch_and_start)
+
+        # 上一次一键升级的结果：新版启动后提示一次，并清理下载包与备份。
+        self._update_result = updater.pop_update_result(resolved_data_dir)
+        if self._update_result is not None:
+            QTimer.singleShot(400, self._announce_update_result)
 
     def _setup_window_icon(self) -> None:
         icon_path = Path(__file__).resolve().parent / "assets" / "icon.ico"
@@ -242,6 +279,27 @@ class LANimalsApp(QMainWindow):
         self.page_header_layout.addWidget(back)
         self.page_header_layout.addWidget(title)
         self.page_header_layout.addStretch(1)
+        # 版本号兼“检查更新”入口：只有点击时才会访问 GitHub。
+        self.update_button = QPushButton(self.page_header)
+        self.update_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_button.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                border-radius: 6px;
+                color: {self.theme.text_muted};
+                font-size: 11px;
+                padding: 2px 6px;
+            }}
+            QPushButton:hover {{ background: {self.theme.secondary_button}; color: {self.theme.text_main}; }}
+            QPushButton:disabled {{ color: {self.theme.text_subtle}; }}
+            """
+        )
+        self.update_button.clicked.connect(self.check_for_updates)
+        self.update_button.destroyed.connect(self._forget_update_button)
+        self._reset_update_button()
+        self.page_header_layout.addWidget(self.update_button)
 
     def show_main(self, initial: bool = False) -> None:
         self._clear_page_header()
@@ -382,6 +440,117 @@ class LANimalsApp(QMainWindow):
     def _finish_clear_data(self, overlay: InWindowModalOverlay) -> None:
         self._dismiss_modal(overlay)
         self.main_view.toast.setText(t("gui.clearSuccess"))
+        self.schedule_toast_clear(self.main_view.toast)
+
+    def _forget_update_button(self, *_args: object) -> None:
+        self.update_button = None
+
+    def _reset_update_button(self) -> None:
+        if self.update_button is None:
+            return
+        if self._update_check_pending:
+            self.update_button.setText(button_text("gui.checkingUpdate"))
+            self.update_button.setEnabled(False)
+            return
+        self.update_button.setText(f"v{__version__} · " + button_text("gui.checkUpdate"))
+        self.update_button.setEnabled(True)
+
+    def _flash_update_button(self, key: str) -> None:
+        if self.update_button is not None:
+            self.update_button.setText(button_text(key))
+            self.update_button.setEnabled(True)
+        self._update_button_timer.start(2_500)
+
+    def check_for_updates(self) -> None:
+        """用户点击后查询 GitHub 上的最新 Release；没有点击就不联网。"""
+        if self._update_check_pending:
+            return
+        self._update_check_pending = True
+        self._reset_update_button()
+        self.run_controller_action(
+            updater.check_latest,
+            on_success=self._on_update_checked,
+            on_error=self._on_update_check_failed,
+        )
+
+    def _on_update_check_failed(self, error: Exception) -> None:
+        logger.warning("检查更新失败: %s", error)
+        self._update_check_pending = False
+        self._flash_update_button("gui.updateCheckFailed")
+
+    def _on_update_checked(self, release: updater.ReleaseInfo) -> None:
+        self._update_check_pending = False
+        if not release.is_newer:
+            self._flash_update_button("gui.upToDate")
+            return
+        self._reset_update_button()
+        try:
+            layout = updater.current_layout()
+            if not release.asset_url:
+                raise updater.UpdateError("noAsset")
+        except updater.UpdateError as error:
+            self._show_manual_update_dialog(release, update_error_message(error))
+            return
+        self._show_update_dialog(release, layout)
+
+    def _show_manual_update_dialog(self, release: updater.ReleaseInfo, message: str) -> None:
+        dialog = UpdateDialog(
+            self.theme,
+            t("gui.updateAvailableTitle", version=release.version),
+            message,
+            confirm_text=t("gui.openDownloadPage"),
+            show_release_notes=False,
+        )
+        overlay = self._present_modal(dialog)
+        dialog.cancelled.connect(lambda: self._dismiss_modal(overlay))
+        dialog.confirmed.connect(lambda: (webbrowser.open(release.page_url), self._dismiss_modal(overlay)))
+
+    def _show_update_dialog(self, release: updater.ReleaseInfo, layout: updater.InstallLayout) -> None:
+        size_mb = max(1, round(release.asset_size / (1024 * 1024))) if release.asset_size else "?"
+        dialog = UpdateDialog(
+            self.theme,
+            t("gui.updateAvailableTitle", version=release.version),
+            t("gui.updateAvailableBody", current=f"v{__version__}", size=size_mb),
+            confirm_text=t("gui.updateNow"),
+        )
+        overlay = self._present_modal(dialog)
+        dialog.cancelled.connect(lambda: self._dismiss_modal(overlay))
+        dialog.release_notes_requested.connect(lambda: webbrowser.open(release.page_url))
+        dialog.confirmed.connect(lambda: self._start_update(dialog, release, layout))
+
+    def _start_update(
+        self,
+        dialog: UpdateDialog,
+        release: updater.ReleaseInfo,
+        layout: updater.InstallLayout,
+    ) -> None:
+        dialog.set_pending(True)
+        dialog.progress_changed.emit(0)
+        data_dir = self.controller.data_dir
+        self.run_controller_action(
+            lambda: updater.prepare_update(release, data_dir, layout, progress=dialog.progress_changed.emit),
+            on_success=lambda plan_path: self._launch_update(dialog, plan_path),
+            on_error=lambda error: dialog.show_error(update_error_message(error)),
+        )
+
+    def _launch_update(self, dialog: UpdateDialog, plan_path: Path) -> None:
+        dialog.set_status(t("gui.updateRestarting"))
+        try:
+            updater.launch_update_helper(plan_path)
+        except Exception as error:
+            logger.exception("启动升级助手失败: %s", error)
+            dialog.show_error(t("gui.updateFailed"))
+            return
+        # 升级助手会等本进程完全退出（服务停止、单实例锁释放）后再替换文件。
+        QTimer.singleShot(300, self._do_quit)
+
+    def _announce_update_result(self) -> None:
+        result = self._update_result or {}
+        if result.get("ok"):
+            message = t("gui.updatedTo", version=result.get("version", f"v{__version__}"))
+        else:
+            message = t("gui.updateRolledBack")
+        self.main_view.toast.setText(message)
         self.schedule_toast_clear(self.main_view.toast)
 
     def _on_server_status_changed(self, status: str, detail: str | None = None) -> None:
