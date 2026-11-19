@@ -113,13 +113,18 @@ def executable_in_package(root: Path, system: str = sys.platform) -> Path:
 
 
 def ssl_context() -> ssl.SSLContext:
-    """打包版里的 Python 不一定能找到系统证书，优先使用随包携带的 certifi 证书。"""
+    """系统证书（含公司代理自签的根证书）加上随包携带的 certifi 证书。
+
+    打包版里的 Python 在 macOS/Linux 上常常找不到系统证书，certifi 保证能连上 GitHub。
+    """
+    context = ssl.create_default_context()
     try:
         import certifi
 
-        return ssl.create_default_context(cafile=certifi.where())
-    except Exception:
-        return ssl.create_default_context()
+        context.load_verify_locations(cafile=certifi.where())
+    except Exception as error:
+        logger.debug("加载 certifi 证书失败: %s", error)
+    return context
 
 
 def _open(url: str, *, accept: str, timeout: float):
